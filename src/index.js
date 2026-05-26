@@ -111,35 +111,76 @@ async function handleDives(request, env) {
   return json({ error: 'Method not allowed' }, 405);
 }
 
+const DIVER_COLS = [
+  'name','color','birthday','cert_agency','cert_level',
+  'cert_number','cert_issue_date','specialties','avatar_key',
+];
+const DIVER_JSON_COLS = new Set(['specialties']);
+
+function diverRowToObj(r) {
+  const out = { ...r };
+  for (const c of DIVER_JSON_COLS) {
+    try { out[c] = r[c] ? JSON.parse(r[c]) : []; }
+    catch { out[c] = []; }
+  }
+  return out;
+}
+function diverToRow(body) {
+  const row = {};
+  for (const c of DIVER_COLS) {
+    let v = body[c];
+    if (v === undefined) { row[c] = null; continue; }
+    if (DIVER_JSON_COLS.has(c)) {
+      row[c] = Array.isArray(v) ? JSON.stringify(v) : (v ? String(v) : null);
+    } else if (v === '') {
+      row[c] = null;
+    } else {
+      row[c] = v;
+    }
+  }
+  return row;
+}
+
 async function handleDivers(request, env) {
   const method = request.method;
   if (method === 'OPTIONS') return new Response(null, { headers: CORS });
 
   if (method === 'GET') {
     const { results } = await env.DB.prepare(
-      'SELECT id, name, color FROM divers ORDER BY created_at ASC'
+      `SELECT id, ${DIVER_COLS.join(', ')} FROM divers ORDER BY created_at ASC`
     ).all();
-    return json(results || []);
+    return json((results || []).map(diverRowToObj));
   }
 
   if (method === 'POST') {
     if (!isOwner(request, env)) return json({ error: 'Forbidden' }, 403);
-    const { id, name, color } = await request.json();
-    if (!id || !name) return json({ error: 'id and name required' }, 400);
+    const body = await request.json();
+    if (!body.id || !body.name) return json({ error: 'id and name required' }, 400);
+    const row = diverToRow(body);
+    const cols = ['id', ...DIVER_COLS];
+    const placeholders = cols.map(() => '?').join(', ');
     await env.DB.prepare(
-      'INSERT OR REPLACE INTO divers (id, name, color) VALUES (?, ?, ?)'
-    ).bind(id, name, color || null).run();
-    return json({ id, name, color }, 201);
+      `INSERT OR REPLACE INTO divers (${cols.join(', ')}) VALUES (${placeholders})`
+    ).bind(body.id, ...DIVER_COLS.map(c => row[c])).run();
+    const inserted = await env.DB.prepare(
+      `SELECT id, ${DIVER_COLS.join(', ')} FROM divers WHERE id = ?`
+    ).bind(body.id).first();
+    return json(diverRowToObj(inserted), 201);
   }
 
   if (method === 'PUT') {
     if (!isOwner(request, env)) return json({ error: 'Forbidden' }, 403);
-    const { id, name, color } = await request.json();
-    if (!id) return json({ error: 'id required' }, 400);
+    const body = await request.json();
+    if (!body.id) return json({ error: 'id required' }, 400);
+    const row = diverToRow(body);
+    const setClause = DIVER_COLS.map(c => `${c} = COALESCE(?, ${c})`).join(', ');
     await env.DB.prepare(
-      'UPDATE divers SET name = COALESCE(?, name), color = COALESCE(?, color) WHERE id = ?'
-    ).bind(name ?? null, color ?? null, id).run();
-    return json({ id, name, color });
+      `UPDATE divers SET ${setClause} WHERE id = ?`
+    ).bind(...DIVER_COLS.map(c => row[c]), body.id).run();
+    const updated = await env.DB.prepare(
+      `SELECT id, ${DIVER_COLS.join(', ')} FROM divers WHERE id = ?`
+    ).bind(body.id).first();
+    return json(diverRowToObj(updated));
   }
 
   if (method === 'DELETE') {
@@ -149,6 +190,8 @@ async function handleDivers(request, env) {
     if (!id) return json({ error: 'id required' }, 400);
     const inUse = await env.DB.prepare('SELECT 1 FROM dives WHERE diver_id = ? LIMIT 1').bind(id).first();
     if (inUse) return json({ error: 'diver has logged dives' }, 409);
+    const d = await env.DB.prepare('SELECT avatar_key FROM divers WHERE id = ?').bind(id).first();
+    if (d && d.avatar_key) await env.PHOTOS.delete(d.avatar_key).catch(() => {});
     await env.DB.prepare('DELETE FROM divers WHERE id = ?').bind(id).run();
     return json({ deleted: true });
   }

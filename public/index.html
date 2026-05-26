@@ -224,6 +224,38 @@
   }
   .leaflet-popup-content .popen:hover { background: var(--teal-bright); }
 
+  /* ---- Divers ---- */
+  .diver-card {
+    background: linear-gradient(135deg, var(--deep), rgba(10,48,70,0.5));
+    border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+    cursor: pointer; transition: all .2s; display: flex; gap: 14px; align-items: flex-start;
+  }
+  .diver-card:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+  .diver-card .avatar {
+    width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0;
+    background-size: cover; background-position: center;
+    border: 2px solid var(--line-strong);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-size: 1.2rem; color: var(--abyss);
+  }
+  .diver-card .body { flex: 1; min-width: 0; }
+  .diver-card h3 { font-family: 'Fraunces'; font-weight: 500; color: var(--foam); font-size: 1.1rem; margin-bottom: 4px; }
+  .diver-card .cert { font-size: 0.78rem; color: var(--ink-dim); margin-bottom: 8px; }
+  .diver-card .mini-stats { display: flex; gap: 14px; font-size: 0.72rem; color: var(--ink); flex-wrap: wrap; }
+  .diver-card .mini-stats .v { font-family: 'Fraunces'; color: var(--aqua); font-size: 0.95rem; }
+  .diver-card .mini-stats .k { color: var(--ink-dim); letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.62rem; }
+  .avatar-zone {
+    grid-column: 1/-1; display: flex; gap: 16px; align-items: center;
+    padding: 14px; background: rgba(127,227,223,0.04);
+    border: 1px dashed var(--line-strong); border-radius: 10px;
+  }
+  .avatar-zone .preview {
+    width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+    background: var(--mid); background-size: cover; background-position: center;
+    border: 2px solid var(--line-strong);
+  }
+  .avatar-zone .controls { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
+
   /* ---- Modal ---- */
   .modal-bg {
     position: fixed; inset: 0; background: rgba(2,10,18,0.82); backdrop-filter: blur(6px);
@@ -373,6 +405,7 @@
     <button class="tab active" data-tab="timeline">Timeline</button>
     <button class="tab" data-tab="map">Dive Map</button>
     <button class="tab" data-tab="creatures">Sightings</button>
+    <button class="tab" data-tab="divers">Divers</button>
   </nav>
 
   <div class="stats" id="stats"></div>
@@ -406,6 +439,15 @@
     <p style="color:var(--ink-dim);font-size:0.8rem;margin-top:14px;">Each beacon marks a logged dive site. Click for details · scroll to zoom · drag to pan.</p>
   </section>
 
+  <!-- DIVERS -->
+  <section id="tab-divers" style="display:none;">
+    <div class="section-head">
+      <h2>Dive Team</h2>
+      <div style="font-size:0.8rem;color:var(--ink-dim);">Click a diver to view or edit their profile.</div>
+    </div>
+    <div id="diversGrid"></div>
+  </section>
+
   <!-- CREATURES -->
   <section id="tab-creatures" style="display:none;">
     <div class="section-head"><h2>Sightings Log</h2></div>
@@ -431,10 +473,22 @@
   </div>
 </div>
 
+<!-- MODAL: edit diver profile -->
+<div class="modal-bg" id="diverModal">
+  <div class="modal">
+    <button class="close-x" data-close>×</button>
+    <h2 id="diverTitle">Diver Profile</h2>
+    <p class="sub">Certifications, specialties, and stats.</p>
+    <div class="form-grid" id="diverFormGrid"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 // ============ DATA LAYER ============
+const CERT_AGENCIES = ['PADI','SDI','TDI','NAUI','SSI','BSAC','CMAS','GUE','RAID','Other'];
+const SPECIALTY_TAGS = ['Nitrox','Advanced Nitrox','Deep','Wreck','Cave','Cavern','Night','Drift','Boat','Rescue','Divemaster','Instructor','Sidemount','Ice','Search & Recovery','Underwater Photography','Dry Suit','Altitude'];
 const SITE_TAGS = ['Reef','Wall','Wreck','Cavern','Cave','Drift','Night','Deep','Shore','Boat','Kelp forest','Pinnacle','Muck','Thermocline','Pier'];
 const CRITTER_TAGS = ['Sea turtle','Reef shark','Nurse shark','Manta ray','Eagle ray','Stingray','Octopus','Cuttlefish','Squid','Moray eel','Barracuda','Grouper','Lionfish','Nudibranch','Seahorse','Frogfish','Clownfish','Lobster','Crab','Dolphin','Whale shark','Hammerhead','Jellyfish','Coral','Anemone','Starfish'];
 const CONDITIONS = ['Calm','Mild chop','Choppy','Surge','Strong current','Mild current','Low viz','Crystal clear','Murky','Cold','Warm'];
@@ -593,6 +647,12 @@ function computeSAC(dive){
 }
 
 // ============ RENDER: diver pills ============
+function avatarBg(d){
+  if (d.avatar_key) return `background-image:url('/photos/${d.avatar_key}');`;
+  return `background:${d.color || '#7da3ad'};`;
+}
+function diverInitial(d){ return (d.name||'?').trim().charAt(0).toUpperCase(); }
+
 function renderDiverPills(){
   const el = $('#diverPills'); el.innerHTML='';
   if(!DIVERS.length){
@@ -604,42 +664,216 @@ function renderDiverPills(){
   DIVERS.forEach(d=>{
     const b=document.createElement('button');
     b.className='diver-pill'+(d.id===ME?' active':'');
-    b.innerHTML=`<span class="dot" style="background:${d.color}"></span>${d.name}`;
+    const dot = d.avatar_key
+      ? `<span class="dot" style="background-image:url('/photos/${d.avatar_key}');background-size:cover;background-position:center;"></span>`
+      : `<span class="dot" style="background:${d.color}"></span>`;
+    b.innerHTML = `${dot}${d.name}`;
     b.onclick=()=>setMe(d.id);
-    // long-press / right-click to rename or remove
-    b.oncontextmenu=(e)=>{ e.preventDefault(); editDiver(d.id); };
+    b.oncontextmenu=(e)=>{ e.preventDefault(); openDiverEdit(d.id); };
     el.appendChild(b);
   });
-  if (!isOwner()) return; // viewers can't add divers
+  if (!isOwner()) return;
   const add=document.createElement('button');
   add.className='diver-pill add'; add.textContent='+ add diver';
-  add.onclick=async()=>{
-    if (!isOwner()) { toast('Sign in to add divers'); return; }
-    const name=prompt('Diver name?'); if(!name||!name.trim())return;
-    const colors=['#3fd0d4','#e8765a','#e8dcc4','#7fe3df','#1ba3a8','#9d8df1'];
-    const nd={id:'d'+Date.now(),name:name.trim(),color:colors[DIVERS.length%colors.length]};
-    try { await saveDiver(nd); } catch { return; }
-    DIVERS.push(nd);
-    if(!ME) setMe(nd.id);
-    renderDiverPills(); refreshFilters();
-  };
+  add.onclick=quickAddDiver;
   el.appendChild(add);
 }
-async function editDiver(id){
-  if (!isOwner()) { toast('Sign in to edit divers'); return; }
-  const d=diverById(id);
-  const name=prompt(`Rename "${d.name}" — or clear the box and OK to remove this diver:`, d.name);
-  if(name===null) return;
-  if(!name.trim()){
-    if(DIVES.some(x=>x.diver===id)){ toast("Can't remove — they have logged dives"); return; }
-    try { await deleteDiverApi(id); } catch { return; }
-    DIVERS=DIVERS.filter(x=>x.id!==id);
-    if(ME===id) setMe(DIVERS[0]?DIVERS[0].id:null);
-  } else {
-    try { await renameDiverApi(id, name.trim()); } catch { return; }
-    DIVERS=DIVERS.map(x=>x.id===id?{...x,name:name.trim()}:x);
+
+async function quickAddDiver(){
+  if (!isOwner()) { toast('Sign in to add divers'); return; }
+  const name=prompt('Diver name? (You can fill in cert details in the Divers tab.)');
+  if(!name||!name.trim())return;
+  const colors=['#3fd0d4','#e8765a','#e8dcc4','#7fe3df','#1ba3a8','#9d8df1'];
+  const nd={id:'d'+Date.now(),name:name.trim(),color:colors[DIVERS.length%colors.length],specialties:[]};
+  try { await saveDiver(nd); } catch { return; }
+  DIVERS.push(nd);
+  if(!ME) setMe(nd.id);
+  renderDiverPills(); refreshFilters(); renderDivers();
+}
+
+// Compute per-diver stats from DIVES
+function diverStats(diverId){
+  const own = DIVES.filter(d=> d.diver===diverId);
+  const buddied = DIVES.filter(d=> (d.buddies||[]).includes(diverId));
+  const all = own.concat(buddied.filter(d=>!own.includes(d)));
+  const mins = all.reduce((s,d)=> s+(minsBetween(d.timeIn,d.timeOut)||0), 0);
+  const maxD = all.reduce((m,d)=> Math.max(m,+d.maxDepth||0), 0);
+  const sites = new Set(all.map(d=>d.site).filter(Boolean)).size;
+  return { dives: all.length, ownDives: own.length, mins, maxDepth: maxD, sites };
+}
+
+function renderDivers(){
+  const grid = $('#diversGrid');
+  if (!DIVERS.length){
+    grid.innerHTML = `<div class="empty"><div class="fish">🤿</div><p>No divers yet. ${isOwner()?'Use the + add diver button up top to start.':'Sign in to add the dive team.'}</p></div>`;
+    return;
   }
-  renderDiverPills(); refreshFilters(); refreshAll();
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">` +
+    DIVERS.map(d=>{
+      const s = diverStats(d.id);
+      const certLine = [d.cert_agency, d.cert_level].filter(Boolean).join(' · ') || 'No certification on file';
+      const av = d.avatar_key
+        ? `<div class="avatar" style="background-image:url('/photos/${d.avatar_key}');"></div>`
+        : `<div class="avatar" style="background:${d.color||'#7da3ad'};">${diverInitial(d)}</div>`;
+      return `
+        <div class="diver-card" onclick="openDiverEdit('${d.id}')">
+          ${av}
+          <div class="body">
+            <h3>${d.name}</h3>
+            <div class="cert">${certLine}</div>
+            <div class="mini-stats">
+              <div><div class="v">${s.dives}</div><div class="k">Dives</div></div>
+              <div><div class="v">${Math.floor(s.mins/60)}h ${s.mins%60}m</div><div class="k">Bottom</div></div>
+              <div><div class="v">${s.maxDepth||'—'} ft</div><div class="k">Deepest</div></div>
+              <div><div class="v">${s.sites}</div><div class="k">Sites</div></div>
+            </div>
+          </div>
+        </div>`;
+    }).join('') + `</div>`;
+}
+
+// ---- Diver edit modal ----
+let diverEditId = null;
+let diverFormSpecialties = [];
+let diverFormAvatar = null; // data URL or R2 key
+
+window.openDiverEdit = function(id){
+  const d = diverById(id);
+  diverEditId = id;
+  diverFormSpecialties = Array.isArray(d.specialties) ? [...d.specialties] : [];
+  diverFormAvatar = d.avatar_key || null;
+  $('#diverTitle').textContent = `${d.name} — Profile`;
+  buildDiverForm(d);
+  $('#diverModal').classList.add('open');
+};
+
+function buildDiverForm(d){
+  const g = $('#diverFormGrid');
+  const ro = !isOwner();
+  const agencyOpts = ['<option value="">— Select agency —</option>'].concat(
+    CERT_AGENCIES.map(a => `<option ${d.cert_agency===a?'selected':''}>${a}</option>`)
+  ).join('');
+  const s = diverStats(d.id);
+  g.innerHTML = `
+    <div class="avatar-zone">
+      <div class="preview" id="dvPreview" style="${diverFormAvatar?`background-image:url('${diverFormAvatar.startsWith&&diverFormAvatar.startsWith('data:')?diverFormAvatar:`/photos/${diverFormAvatar}`}');`:`background:${d.color||'#7da3ad'};`}"></div>
+      <div class="controls">
+        ${ro?'<span style="color:var(--ink-dim);font-size:0.78rem;">Sign in to change avatar.</span>':`
+          <button class="btn ghost sm" onclick="document.getElementById('dvAvatarInput').click()">${diverFormAvatar?'Replace photo':'Upload photo'}</button>
+          ${diverFormAvatar?'<button class="btn ghost sm" onclick="clearDiverAvatar()">Remove</button>':''}
+          <input type="file" id="dvAvatarInput" accept="image/*" style="display:none;">
+        `}
+      </div>
+    </div>
+
+    <div class="fieldset-title">Identity</div>
+    <div class="field"><label>Name</label><input id="dv_name" value="${d.name||''}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Display Color</label><input id="dv_color" type="color" value="${d.color||'#3fd0d4'}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Birthday</label><input id="dv_birthday" type="date" value="${d.birthday||''}" ${ro?'disabled':''}></div>
+    <div class="field"></div>
+
+    <div class="fieldset-title">Certification</div>
+    <div class="field"><label>Agency</label><select id="dv_cert_agency" ${ro?'disabled':''}>${agencyOpts}</select></div>
+    <div class="field"><label>Level</label><input id="dv_cert_level" value="${d.cert_level||''}" placeholder="e.g. Advanced Open Water" ${ro?'disabled':''}></div>
+    <div class="field"><label>Cert Number</label><input id="dv_cert_number" value="${d.cert_number||''}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Issue Date</label><input id="dv_cert_issue" type="date" value="${d.cert_issue_date||''}" ${ro?'disabled':''}></div>
+
+    <div class="fieldset-title">Specialties</div>
+    <div class="field full"><div class="tagpick" id="dv_specPick"></div></div>
+
+    <div class="fieldset-title">Dive Stats</div>
+    <div class="computed-box">
+      <div class="cb"><div class="v">${s.dives}</div><div class="k">Total dives</div></div>
+      <div class="cb"><div class="v">${Math.floor(s.mins/60)}h ${s.mins%60}m</div><div class="k">Bottom time</div></div>
+      <div class="cb"><div class="v">${s.maxDepth||'—'} ft</div><div class="k">Deepest</div></div>
+      <div class="cb"><div class="v">${s.sites}</div><div class="k">Unique sites</div></div>
+      <div class="cb"><div class="v">${s.ownDives}</div><div class="k">Logged by them</div></div>
+    </div>
+
+    <div class="modal-actions" style="grid-column:1/-1;">
+      ${ro?'<span></span>':`<button class="btn danger" id="diverDeleteBtn">Delete Diver</button>`}
+      <div style="display:flex;gap:10px;">
+        <button class="btn ghost" data-close>Close</button>
+        ${ro?'':'<button class="btn" id="diverSaveBtn">Save Profile</button>'}
+      </div>
+    </div>`;
+
+  renderTagPick('dv_specPick', SPECIALTY_TAGS, diverFormSpecialties, '');
+  document.querySelectorAll('#diverModal [data-close]').forEach(b=>b.onclick=closeModals);
+
+  if (!ro) {
+    $('#dvAvatarInput').onchange = handleAvatarPick;
+    $('#diverSaveBtn').onclick = saveDiverProfile;
+    $('#diverDeleteBtn').onclick = () => deleteDiver_(diverEditId);
+  }
+}
+
+window.clearDiverAvatar = function(){ diverFormAvatar = null; refreshAvatarPreview(); buildDiverForm(diverById(diverEditId)); };
+
+async function handleAvatarPick(e){
+  const f = e.target.files[0]; if (!f) return;
+  diverFormAvatar = await compressImage(f);  // data URL until save
+  refreshAvatarPreview();
+}
+function refreshAvatarPreview(){
+  const p = $('#dvPreview'); if (!p) return;
+  if (!diverFormAvatar) { p.style.backgroundImage = 'none'; return; }
+  const url = (typeof diverFormAvatar==='string' && diverFormAvatar.startsWith('data:'))
+    ? diverFormAvatar : `/photos/${diverFormAvatar}`;
+  p.style.backgroundImage = `url('${url}')`;
+}
+
+async function saveDiverProfile(){
+  if (!isOwner()) { toast('Sign in to edit'); return; }
+  const id = diverEditId;
+  const payload = {
+    id,
+    name: $('#dv_name').value.trim(),
+    color: $('#dv_color').value,
+    birthday: $('#dv_birthday').value,
+    cert_agency: $('#dv_cert_agency').value,
+    cert_level: $('#dv_cert_level').value,
+    cert_number: $('#dv_cert_number').value,
+    cert_issue_date: $('#dv_cert_issue').value,
+    specialties: [...diverFormSpecialties],
+  };
+  if (!payload.name) { toast('Name is required'); return; }
+  // upload avatar if it's a new data URL
+  if (diverFormAvatar && typeof diverFormAvatar==='string' && diverFormAvatar.startsWith('data:')) {
+    try { payload.avatar_key = await uploadPhoto(diverFormAvatar); }
+    catch { toast('Avatar upload failed'); return; }
+  } else {
+    payload.avatar_key = diverFormAvatar;  // existing key or null
+  }
+  try {
+    const r = await fetch('/api/divers', {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error('save failed');
+    const updated = await r.json();
+    const i = DIVERS.findIndex(x=>x.id===id);
+    if (i>=0) DIVERS[i] = updated;
+    closeModals();
+    renderDiverPills(); renderDivers(); refreshAll();
+    toast('Profile saved ✓');
+  } catch(e) {
+    console.error(e); toast('Could not save profile');
+  }
+}
+
+async function deleteDiver_(id){
+  if (!isOwner()) { toast('Sign in to delete'); return; }
+  if (DIVES.some(x=>x.diver===id)) { toast("Can't remove — they have logged dives"); return; }
+  if (!confirm('Remove this diver from the team?')) return;
+  try { await deleteDiverApi(id); }
+  catch { return; }
+  DIVERS = DIVERS.filter(x=>x.id!==id);
+  if (ME===id) setMe(DIVERS[0]?DIVERS[0].id:null);
+  closeModals();
+  renderDiverPills(); renderDivers(); refreshFilters(); refreshAll();
+  toast('Diver removed');
 }
 
 // ============ RENDER: stats ============
@@ -1068,9 +1302,10 @@ function refreshAll(){ renderStats(); renderTimeline(); refreshFilters(); if($('
 
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
-  ['timeline','map','creatures'].forEach(n=>$('#tab-'+n).style.display='none');
+  ['timeline','map','creatures','divers'].forEach(n=>$('#tab-'+n).style.display='none');
   $('#tab-'+t.dataset.tab).style.display='block';
   if(t.dataset.tab==='map') initMap();
+  if(t.dataset.tab==='divers') renderDivers();
   if(t.dataset.tab==='creatures') renderCreatures();
 });
 $('#addBtn').onclick=()=>{
