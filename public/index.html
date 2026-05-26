@@ -154,7 +154,9 @@
     position: relative; background: linear-gradient(135deg, var(--deep), rgba(10,48,70,0.5));
     border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px;
     margin-bottom: 18px; transition: all .25s; cursor: pointer;
+    display: flex; gap: 18px; align-items: flex-start;
   }
+  .dive-card-body { flex: 1; min-width: 0; }
   .dive-card:hover { border-color: var(--line-strong); transform: translateX(4px); }
   .dive-card::before {
     content: ''; position: absolute; left: -29px; top: 26px; width: 14px; height: 14px;
@@ -189,8 +191,9 @@
     border-radius: 9px; border: 1px solid var(--line-strong);
     background: #d8e7ee; overflow: hidden; position: relative;
   }
+  .dive-card > .mini-map { margin-top: 0; flex-shrink: 0; width: 200px; height: 160px; align-self: stretch; }
   .mini-map.detail { max-width: 100%; height: 220px; margin: 18px 0; }
-  .mini-map .leaflet-control-container { display: none; } /* no controls on minis */
+  .mini-map .leaflet-control-container { display: none; }
 
   .empty { text-align: center; padding: 80px 20px; color: var(--ink-dim); }
   .empty .fish { font-size: 3rem; opacity: 0.5; margin-bottom: 16px; }
@@ -384,6 +387,8 @@
     .form-grid { grid-template-columns: 1fr; }
     .modal { padding: 24px 20px; }
     .wrap { padding: 0 16px 80px; }
+    .dive-card { flex-direction: column; }
+    .dive-card > .mini-map { width: 100%; max-width: none; height: 140px; }
   }
 </style>
 </head>
@@ -952,23 +957,25 @@ async function renderTimeline(){
     const card=document.createElement('div'); card.className='dive-card'; card.onclick=()=>openDetail(d.id);
     const bt=minsBetween(d.timeIn,d.timeOut);
     card.innerHTML=`
-      <div class="dnum">Dive #${computedDiveNum(d)||'—'} · logged by ${diver.name}</div>
-      <h3>${d.site||'Untitled Site'}</h3>
-      <div class="meta"><span>📍 <b>${d.location||'—'}</b></span><span>📅 ${fmtDate(d.date)}</span><span>🕐 ${d.timeIn||'—'}–${d.timeOut||'—'}</span></div>
-      <div class="card-stats">
-        <div class="card-stat"><div class="v">${d.maxDepth||'—'} ft</div><div class="k">Max Depth</div></div>
-        <div class="card-stat"><div class="v">${bt!=null?bt+' min':'—'}</div><div class="k">Bottom Time</div></div>
-        <div class="card-stat"><div class="v">${d.startPsi||'—'}→${d.endPsi||'—'}</div><div class="k">PSI</div></div>
-        ${sac&&sac.rmv?`<div class="card-stat"><div class="v">${sac.rmv}</div><div class="k">RMV cu ft/min</div></div>`:''}
-        ${d.waterTemp?`<div class="card-stat"><div class="v">${d.waterTemp}°</div><div class="k">Water</div></div>`:''}
+      <div class="dive-card-body">
+        <div class="dnum">Dive #${computedDiveNum(d)||'—'} · logged by ${diver.name}</div>
+        <h3>${d.site||'Untitled Site'}</h3>
+        <div class="meta"><span>📍 <b>${d.location||'—'}</b></span><span>📅 ${fmtDate(d.date)}</span><span>🕐 ${d.timeIn||'—'}–${d.timeOut||'—'}</span></div>
+        <div class="card-stats">
+          <div class="card-stat"><div class="v">${d.maxDepth||'—'} ft</div><div class="k">Max Depth</div></div>
+          <div class="card-stat"><div class="v">${bt!=null?bt+' min':'—'}</div><div class="k">Bottom Time</div></div>
+          <div class="card-stat"><div class="v">${d.startPsi||'—'}→${d.endPsi||'—'}</div><div class="k">PSI</div></div>
+          ${sac&&sac.rmv?`<div class="card-stat"><div class="v">${sac.rmv}</div><div class="k">RMV cu ft/min</div></div>`:''}
+          ${d.waterTemp?`<div class="card-stat"><div class="v">${d.waterTemp}°</div><div class="k">Water</div></div>`:''}
+        </div>
+        <div class="tags">
+          ${(d.siteTags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}
+          ${(d.critters||[]).map(t=>`<span class="tag crit">${t}</span>`).join('')}
+          ${buddyNames.map(n=>`<span class="tag buddy">🤿 ${n}</span>`).join('')}
+        </div>
+        <div class="card-thumbs" data-thumbs="${d.id}"></div>
       </div>
-      <div class="tags">
-        ${(d.siteTags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}
-        ${(d.critters||[]).map(t=>`<span class="tag crit">${t}</span>`).join('')}
-        ${buddyNames.map(n=>`<span class="tag buddy">🤿 ${n}</span>`).join('')}
-      </div>
-      ${d.lat && d.lng ? `<div class="mini-map" data-mini-map="${d.id}" data-lat="${d.lat}" data-lng="${d.lng}"></div>` : ''}
-      <div class="card-thumbs" data-thumbs="${d.id}"></div>`;
+      ${d.lat && d.lng ? `<div class="mini-map" data-mini-map="${d.id}" data-lat="${d.lat}" data-lng="${d.lng}"></div>` : ''}`;
     list.appendChild(card);
     // lazy load thumbs
     loadPhotos(d.id).then(ph=>{
