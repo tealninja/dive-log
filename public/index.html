@@ -269,7 +269,7 @@
   /* ---- Modal ---- */
   .modal-bg {
     position: fixed; inset: 0; background: rgba(2,10,18,0.82); backdrop-filter: blur(6px);
-    z-index: 100; display: none; align-items: flex-start; justify-content: center;
+    z-index: 2000; display: none; align-items: flex-start; justify-content: center;
     padding: 40px 16px; overflow-y: auto;
   }
   .modal-bg.open { display: flex; }
@@ -354,7 +354,7 @@
   .toast {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px);
     background: var(--teal); color: var(--abyss); padding: 13px 26px; border-radius: 10px;
-    font-weight: 600; font-size: 0.88rem; z-index: 200; transition: transform .35s; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    font-weight: 600; font-size: 0.88rem; z-index: 3000; transition: transform .35s; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
 
@@ -363,7 +363,18 @@
     background: rgba(4,20,31,0.6); border: 1px solid var(--line-strong); border-radius: 8px;
     padding: 9px 13px; color: var(--ink); font-family: 'Archivo'; font-size: 0.85rem;
   }
-  .vt-btn.active { background: var(--teal) !important; color: var(--abyss) !important; font-weight: 600; }
+  .view-toggle {
+    display: inline-flex; background: rgba(127,227,223,0.05);
+    border: 1px solid var(--line-strong); border-radius: 8px; padding: 2px;
+  }
+  .vt-btn {
+    border: none; background: transparent; color: var(--ink-dim);
+    padding: 6px 12px; border-radius: 6px;
+    font-family: 'Archivo'; font-size: 0.78rem; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .vt-btn:hover { color: var(--ink); }
+  .vt-btn.active { background: var(--teal); color: var(--abyss); font-weight: 600; }
 
   /* ---- Table view ---- */
   .dive-table { width: 100%; border-collapse: collapse; background: rgba(4,20,31,0.4); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
@@ -454,9 +465,9 @@
       <input type="text" id="search" placeholder="Search sites, notes…" style="flex:1;min-width:160px;">
       <select id="filterDiver"><option value="">All divers</option></select>
       <select id="filterTag"><option value="">All sightings</option></select>
-      <div class="view-toggle" id="viewToggle" style="display:inline-flex;background:rgba(127,227,223,0.05);border:1px solid var(--line-strong);border-radius:8px;padding:2px;">
-        <button class="vt-btn active" data-view="cards" style="border:none;background:var(--teal);color:var(--abyss);padding:6px 12px;border-radius:6px;font-family:'Archivo';font-size:0.78rem;cursor:pointer;font-weight:600;">Cards</button>
-        <button class="vt-btn" data-view="table" style="border:none;background:transparent;color:var(--ink-dim);padding:6px 12px;border-radius:6px;font-family:'Archivo';font-size:0.78rem;cursor:pointer;">Table</button>
+      <div class="view-toggle" id="viewToggle">
+        <button class="vt-btn active" data-view="cards">Cards</button>
+        <button class="vt-btn" data-view="table">Table</button>
       </div>
     </div>
     <div id="timelineList" class="timeline"></div>
