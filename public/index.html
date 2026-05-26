@@ -184,14 +184,21 @@
   .card-thumbs { display: flex; gap: 6px; margin-top: 14px; }
   .card-thumbs img { width: 54px; height: 54px; object-fit: cover; border-radius: 7px; border: 1px solid var(--line); }
   .card-thumbs .more { width: 54px; height: 54px; border-radius: 7px; background: var(--mid); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: var(--ink-dim); }
+  .mini-map {
+    width: 100%; max-width: 240px; height: 130px; margin-top: 14px;
+    border-radius: 9px; border: 1px solid var(--line-strong);
+    background: #d8e7ee; overflow: hidden; position: relative;
+  }
+  .mini-map.detail { max-width: 100%; height: 220px; margin: 18px 0; }
+  .mini-map .leaflet-control-container { display: none; } /* no controls on minis */
 
   .empty { text-align: center; padding: 80px 20px; color: var(--ink-dim); }
   .empty .fish { font-size: 3rem; opacity: 0.5; margin-bottom: 16px; }
 
   /* ---- Map ---- */
   #map-wrap { background: var(--deep); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; position: relative; height: 560px; }
-  #map { width: 100%; height: 100%; background: #04141f; }
-  .leaflet-container { font-family: 'Archivo', sans-serif; background: #04141f; }
+  #map { width: 100%; height: 100%; background: #d8e7ee; }
+  .leaflet-container { font-family: 'Archivo', sans-serif; background: #d8e7ee; }
   .leaflet-control-zoom a {
     background: rgba(4,20,31,0.9) !important; color: var(--ink) !important;
     border: 1px solid var(--line-strong) !important;
@@ -353,6 +360,25 @@
     background: rgba(4,20,31,0.6); border: 1px solid var(--line-strong); border-radius: 8px;
     padding: 9px 13px; color: var(--ink); font-family: 'Archivo'; font-size: 0.85rem;
   }
+  .vt-btn.active { background: var(--teal) !important; color: var(--abyss) !important; font-weight: 600; }
+
+  /* ---- Table view ---- */
+  .dive-table { width: 100%; border-collapse: collapse; background: rgba(4,20,31,0.4); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .dive-table th, .dive-table td { padding: 10px 12px; text-align: left; font-size: 0.82rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .dive-table th {
+    background: var(--mid); color: var(--aqua); font-family: 'Archivo';
+    font-weight: 500; font-size: 0.7rem; letter-spacing: 0.08em;
+    text-transform: uppercase; cursor: pointer; user-select: none;
+    position: sticky; top: 0;
+  }
+  .dive-table th:hover { background: var(--shelf); }
+  .dive-table th .arr { color: var(--teal-bright); margin-left: 4px; opacity: 0.4; }
+  .dive-table th.sorted .arr { opacity: 1; }
+  .dive-table tbody tr { cursor: pointer; transition: background .15s; }
+  .dive-table tbody tr:hover { background: rgba(127,227,223,0.05); }
+  .dive-table tbody tr:last-child td { border-bottom: none; }
+  .dive-table .num { font-family: 'Fraunces', serif; color: var(--foam); }
+  .dive-table .dim { color: var(--ink-dim); }
 
   @media (max-width: 640px) {
     .form-grid { grid-template-columns: 1fr; }
@@ -423,8 +449,13 @@
       <input type="text" id="search" placeholder="Search sites, notes…" style="flex:1;min-width:160px;">
       <select id="filterDiver"><option value="">All divers</option></select>
       <select id="filterTag"><option value="">All sightings</option></select>
+      <div class="view-toggle" id="viewToggle" style="display:inline-flex;background:rgba(127,227,223,0.05);border:1px solid var(--line-strong);border-radius:8px;padding:2px;">
+        <button class="vt-btn active" data-view="cards" style="border:none;background:var(--teal);color:var(--abyss);padding:6px 12px;border-radius:6px;font-family:'Archivo';font-size:0.78rem;cursor:pointer;font-weight:600;">Cards</button>
+        <button class="vt-btn" data-view="table" style="border:none;background:transparent;color:var(--ink-dim);padding:6px 12px;border-radius:6px;font-family:'Archivo';font-size:0.78rem;cursor:pointer;">Table</button>
+      </div>
     </div>
     <div id="timelineList" class="timeline"></div>
+    <div id="timelineTable" style="display:none;"></div>
   </section>
 
   <!-- MAP -->
@@ -892,6 +923,9 @@ function renderStats(){
 }
 
 // ============ RENDER: timeline ============
+let timelineView = 'cards'; // 'cards' | 'table'
+let tableSort = { col: 'date', dir: 'desc' };
+
 function getFiltered(){
   const q=($('#search').value||'').toLowerCase();
   const fd=$('#filterDiver').value, ft=$('#filterTag').value;
@@ -904,7 +938,11 @@ function getFiltered(){
     });
 }
 async function renderTimeline(){
-  const list=$('#timelineList'); const data=getFiltered();
+  const list=$('#timelineList'); const table=$('#timelineTable');
+  list.style.display = timelineView==='cards' ? '' : 'none';
+  table.style.display = timelineView==='table' ? '' : 'none';
+  if (timelineView === 'table') { renderTimelineTable(); return; }
+  const data=getFiltered();
   if(!data.length){ list.innerHTML=`<div class="empty"><div class="fish">🪸</div><p>No dives logged yet. Hit “Log a Dive” to record your first descent.</p></div>`; return; }
   list.innerHTML='';
   for(const d of data){
@@ -914,7 +952,7 @@ async function renderTimeline(){
     const card=document.createElement('div'); card.className='dive-card'; card.onclick=()=>openDetail(d.id);
     const bt=minsBetween(d.timeIn,d.timeOut);
     card.innerHTML=`
-      <div class="dnum">Dive #${d.diveNum||'—'} · logged by ${diver.name}</div>
+      <div class="dnum">Dive #${computedDiveNum(d)||'—'} · logged by ${diver.name}</div>
       <h3>${d.site||'Untitled Site'}</h3>
       <div class="meta"><span>📍 <b>${d.location||'—'}</b></span><span>📅 ${fmtDate(d.date)}</span><span>🕐 ${d.timeIn||'—'}–${d.timeOut||'—'}</span></div>
       <div class="card-stats">
@@ -929,6 +967,7 @@ async function renderTimeline(){
         ${(d.critters||[]).map(t=>`<span class="tag crit">${t}</span>`).join('')}
         ${buddyNames.map(n=>`<span class="tag buddy">🤿 ${n}</span>`).join('')}
       </div>
+      ${d.lat && d.lng ? `<div class="mini-map" data-mini-map="${d.id}" data-lat="${d.lat}" data-lng="${d.lng}"></div>` : ''}
       <div class="card-thumbs" data-thumbs="${d.id}"></div>`;
     list.appendChild(card);
     // lazy load thumbs
@@ -939,6 +978,81 @@ async function renderTimeline(){
       if(ph.length>4){ const m=document.createElement('div'); m.className='more'; m.textContent='+'+(ph.length-4); tc.appendChild(m); }
     });
   }
+  initMiniMaps(list);
+}
+
+const TABLE_COLS = [
+  { key:'diveNum', label:'#',           get:d => computedDiveNum(d) || 0, fmt:v => v||'—', cls:'num' },
+  { key:'date',    label:'Date',        get:d => (d.date||'')+'T'+(d.timeIn||''), fmt:(_,d) => fmtDate(d.date) },
+  { key:'site',    label:'Site',        get:d => (d.site||'').toLowerCase(), fmt:(_,d) => d.site || '<span class="dim">—</span>' },
+  { key:'location',label:'Location',    get:d => (d.location||'').toLowerCase(), fmt:(_,d) => d.location || '<span class="dim">—</span>' },
+  { key:'diver',   label:'Diver',       get:d => diverById(d.diver).name.toLowerCase(), fmt:(_,d) => diverById(d.diver).name },
+  { key:'maxDepth',label:'Max ft',      get:d => +d.maxDepth || 0, fmt:v => v ? `<span class="num">${v}</span>` : '<span class="dim">—</span>', cls:'num' },
+  { key:'bt',      label:'Bottom',      get:d => minsBetween(d.timeIn,d.timeOut)||0, fmt:v => v ? `<span class="num">${v}m</span>` : '<span class="dim">—</span>', cls:'num' },
+  { key:'temp',    label:'Water °F',    get:d => +d.waterTemp || 0, fmt:v => v ? `<span class="num">${v}°</span>` : '<span class="dim">—</span>', cls:'num' },
+  { key:'critters',label:'Sightings',   get:d => (d.critters||[]).length, fmt:(v,d) => (d.critters||[]).slice(0,3).join(', ') + ((d.critters||[]).length>3?`+${(d.critters||[]).length-3}`:'') || '<span class="dim">—</span>' },
+];
+
+function renderTimelineTable(){
+  const wrap = $('#timelineTable');
+  const data = getFiltered().slice().sort((a,b) => {
+    const col = TABLE_COLS.find(c => c.key === tableSort.col) || TABLE_COLS[1];
+    const va = col.get(a), vb = col.get(b);
+    let cmp = (va < vb) ? -1 : (va > vb) ? 1 : 0;
+    return tableSort.dir === 'asc' ? cmp : -cmp;
+  });
+  if (!data.length) { wrap.innerHTML = `<div class="empty"><div class="fish">🪸</div><p>No dives match these filters.</p></div>`; return; }
+  const head = TABLE_COLS.map(c => {
+    const sorted = c.key === tableSort.col;
+    const arrow = sorted ? (tableSort.dir === 'asc' ? '▲' : '▼') : '↕';
+    return `<th class="${sorted?'sorted':''}" onclick="sortTimelineTable('${c.key}')">${c.label}<span class="arr">${arrow}</span></th>`;
+  }).join('');
+  const rows = data.map(d => {
+    const cells = TABLE_COLS.map(c => `<td class="${c.cls||''}">${c.fmt(c.get(d), d)}</td>`).join('');
+    return `<tr onclick="openDetail(${JSON.stringify(d.id)})">${cells}</tr>`;
+  }).join('');
+  wrap.innerHTML = `<table class="dive-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+window.sortTimelineTable = function(key){
+  if (tableSort.col === key) tableSort.dir = (tableSort.dir==='asc') ? 'desc' : 'asc';
+  else { tableSort.col = key; tableSort.dir = (key==='date' || key==='diveNum' || key==='maxDepth' || key==='bt' || key==='temp' || key==='critters') ? 'desc' : 'asc'; }
+  renderTimelineTable();
+};
+
+// Lazy-init Leaflet mini-maps. Each <div class="mini-map"> with data-lat/lng
+// gets a small non-interactive map when scrolled into view.
+function initMiniMaps(root){
+  if (typeof L === 'undefined') return;
+  const targets = root.querySelectorAll('.mini-map[data-lat]');
+  if (!targets.length) return;
+  const make = (el) => {
+    if (el.dataset.inited) return;
+    el.dataset.inited = '1';
+    const lat = +el.dataset.lat, lng = +el.dataset.lng;
+    if (isNaN(lat) || isNaN(lng)) return;
+    const m = L.map(el, {
+      center: [lat, lng], zoom: 8,
+      zoomControl: false, scrollWheelZoom: false,
+      doubleClickZoom: false, dragging: false, attributionControl: false,
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      subdomains:'abcd', maxZoom:19,
+    }).addTo(m);
+    L.circleMarker([lat, lng], {
+      radius: 6, fillColor: '#e8765a', color: '#fff',
+      weight: 1.5, fillOpacity: 0.9,
+    }).addTo(m);
+    setTimeout(() => m.invalidateSize(), 80);
+  };
+  if (!('IntersectionObserver' in window)) {
+    targets.forEach(make); return;
+  }
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      if (e.isIntersecting) { make(e.target); io.unobserve(e.target); }
+    }
+  }, { rootMargin: '120px' });
+  targets.forEach(t => io.observe(t));
 }
 
 // ============ FORM ============
@@ -951,7 +1065,6 @@ function buildForm(d={}){
     <div class="fieldset-title">The Site</div>
     <div class="field full"><label>Dive Site Name</label><input id="f_site" value="${d.site||''}" placeholder="e.g. Blue Hole, Molokini Crater"></div>
     <div class="field"><label>Location / Region</label><input id="f_location" value="${d.location||''}" placeholder="Maui, Hawaii"></div>
-    <div class="field"><label>Dive # (yours)</label><input id="f_diveNum" type="number" value="${d.diveNum||nextDiveNum()}"></div>
     <div class="field"><label>Latitude</label><input id="f_lat" type="number" step="any" value="${d.lat||''}" placeholder="20.6300"></div>
     <div class="field"><label>Longitude</label><input id="f_lng" type="number" step="any" value="${d.lng||''}" placeholder="-156.4960"></div>
 
@@ -1025,7 +1138,15 @@ function buildForm(d={}){
   }
 }
 
-function nextDiveNum(){ const mine=DIVES.filter(x=>x.diver===ME); return mine.length? Math.max(...mine.map(x=>+x.diveNum||0))+1 : 1; }
+// Compute the chronological dive number for `dive` among its diver's logged dives.
+// Returns null for an unsaved dive (no id) or if the diver has no dives.
+function computedDiveNum(dive){
+  if (!dive || dive.id == null) return null;
+  const sameDiver = DIVES.filter(d => d.diver === dive.diver)
+    .sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.timeIn||'').localeCompare(b.timeIn||'') || a.id - b.id);
+  const idx = sameDiver.findIndex(d => d.id === dive.id);
+  return idx >= 0 ? idx + 1 : null;
+}
 
 function renderTagPick(elId, list, store, cls){
   const el=$('#'+elId); el.innerHTML='';
@@ -1108,7 +1229,7 @@ async function saveDive(){
   const existing = editingId ? DIVES.find(x=>x.id===editingId) : null;
   const draft = {
     diver: existing ? existing.diver : ME,
-    site:$('#f_site').value, location:$('#f_location').value, diveNum:$('#f_diveNum').value,
+    site:$('#f_site').value, location:$('#f_location').value,
     lat:$('#f_lat').value, lng:$('#f_lng').value,
     date:$('#f_date').value, surfaceInt:$('#f_si').value, timeIn:$('#f_timeIn').value, timeOut:$('#f_timeOut').value,
     maxDepth:$('#f_maxDepth').value, avgDepth:$('#f_avgDepth').value, waterTemp:$('#f_waterTemp').value, viz:$('#f_viz').value,
@@ -1175,7 +1296,7 @@ async function openDetail(id){
   const buddyNames=(d.buddies||[]).map(x=>diverById(x).name);
   const c=$('#detailContent');
   c.innerHTML=`
-    <div class="dnum" style="color:var(--teal-bright);font-family:Fraunces;font-size:0.8rem;">Dive #${d.diveNum||'—'} · logged by ${diver.name}</div>
+    <div class="dnum" style="color:var(--teal-bright);font-family:Fraunces;font-size:0.8rem;">Dive #${computedDiveNum(d)||'—'} · logged by ${diver.name}</div>
     <h2>${d.site}</h2>
     <p class="sub">📍 ${d.location||'—'} · ${fmtDate(d.date)} · ${d.timeIn||'—'}–${d.timeOut||'—'}</p>
     <div id="detailHero" class="detail-hero"></div>
@@ -1192,6 +1313,7 @@ async function openDetail(id){
       ${d.surfaceInt?`<div class="dg"><div class="v">${d.surfaceInt}</div><div class="k">Surface Interval</div></div>`:''}
     </div>
     ${d.notes?`<div class="detail-notes">${d.notes.replace(/</g,'&lt;')}</div>`:''}
+    ${d.lat && d.lng ? `<div class="mini-map detail" data-mini-map="${d.id}" data-lat="${d.lat}" data-lng="${d.lng}"></div>` : ''}
     <div class="tags">
       ${(d.conditions||[]).map(t=>`<span class="tag">${t}</span>`).join('')}
       ${(d.siteTags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}
@@ -1203,6 +1325,7 @@ async function openDetail(id){
       <button class="btn" onclick="editDive(${JSON.stringify(d.id)})">Edit Dive</button>
     </div>` : ''}`;
   $('#detailModal').classList.add('open');
+  initMiniMaps(c);
   loadPhotos(id).then(ph=>{ const h=$('#detailHero'); if(!ph.length){h.style.display='none';return;} ph.forEach(src=>{const i=new Image();i.src=src;h.appendChild(i);}); });
 }
 window.editDive=function(id){ closeModals(); editingId=id; const d=DIVES.find(x=>x.id===id); $('#formTitle').textContent='Edit Dive'; buildForm(d); $('#formModal').classList.add('open'); };
@@ -1224,7 +1347,7 @@ function initMap(){
       zoomControl: true,
       scrollWheelZoom: true,
     });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap contributors © CARTO',
       subdomains: 'abcd',
       maxZoom: 19,
@@ -1312,6 +1435,22 @@ $('#addBtn').onclick=()=>{
   if(!ME){ toast('Add a diver up top first'); return; }
   editingId=null; $('#formTitle').textContent='Log a Dive'; buildForm({}); $('#formModal').classList.add('open');
 };
+// Filter inputs trigger re-render
+['search','filterDiver','filterTag'].forEach(id => {
+  const el = $('#'+id); if (!el) return;
+  const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+  el.addEventListener(ev, () => renderTimeline());
+});
+// View toggle (Cards / Table)
+document.querySelectorAll('#viewToggle .vt-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('#viewToggle .vt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    timelineView = btn.dataset.view;
+    renderTimeline();
+  };
+});
+
 $('#exportBtn').onclick=async()=>{
   const full=[]; for(const d of DIVES){ const ph=await loadPhotos(d.id); full.push({...d,photos:ph}); }
   const blob=new Blob([JSON.stringify({divers:DIVERS,dives:full},null,2)],{type:'application/json'});
