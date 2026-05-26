@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dive Log</title>
+<style>
+  :root {
+    --navy: #19446C;
+    --teal: #00929F;
+    --dark: #121A24;
+    --gold: #EADE86;
+    --bg: #FAF8F4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--dark); }
+  header {
+    background: var(--navy);
+    color: white;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 3px solid var(--teal);
+  }
+  header h1 { font-size: 1.4rem; letter-spacing: .05em; }
+  #btn-log, #btn-signin {
+    background: var(--teal); color: white;
+    border: none; padding: .5rem 1.1rem;
+    border-radius: 6px; cursor: pointer; font-size: .9rem;
+  }
+  #btn-signin { background: transparent; border: 1px solid rgba(255,255,255,.4); }
+  main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  .stats { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .stat {
+    background: white; border-radius: 10px; padding: 1rem 1.5rem;
+    flex: 1; min-width: 130px; border-top: 3px solid var(--teal);
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .stat .val { font-size: 2rem; font-weight: 700; color: var(--navy); }
+  .stat .lbl { font-size: .8rem; color: #666; }
+  .dives { display: grid; gap: 1rem; }
+  .dive-card {
+    background: white; border-radius: 10px; padding: 1.2rem;
+    border-top: 3px solid var(--teal);
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    display: grid; grid-template-columns: 1fr auto;
+  }
+  .dive-card h3 { color: var(--navy); font-size: 1.05rem; }
+  .dive-meta { font-size: .85rem; color: #555; margin-top: .3rem; }
+  .dive-meta span { margin-right: 1rem; }
+  .dive-notes { font-size: .85rem; color: #444; margin-top: .5rem; }
+  .dive-photo { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin-left: 1rem; }
+  .btn-del {
+    background: none; border: none; color: #c44; cursor: pointer; font-size: .8rem;
+    align-self: start; padding: 0;
+  }
+  .btn-del:hover { text-decoration: underline; }
+  /* Modal */
+  .modal-bg {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: white; border-radius: 12px; padding: 2rem;
+    width: min(500px, 95vw); border-top: 4px solid var(--teal);
+  }
+  .modal h2 { color: var(--navy); margin-bottom: 1.2rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: .85rem; color: #555; margin-bottom: .3rem; }
+  .field input, .field textarea {
+    width: 100%; padding: .55rem .8rem; border: 1px solid #ddd;
+    border-radius: 6px; font-size: .9rem;
+  }
+  .field textarea { height: 80px; resize: vertical; }
+  .modal-actions { display: flex; gap: .8rem; justify-content: flex-end; margin-top: 1.2rem; }
+  .btn-primary { background: var(--teal); color: white; border: none; padding: .55rem 1.3rem; border-radius: 6px; cursor: pointer; }
+  .btn-cancel { background: none; border: 1px solid #ccc; padding: .55rem 1.1rem; border-radius: 6px; cursor: pointer; }
+  .owner-badge { font-size: .75rem; background: var(--gold); color: var(--dark); padding: .2rem .5rem; border-radius: 4px; margin-left: .8rem; }
+  #sign-in-modal .field input { margin-bottom: 0; }
+  .empty { text-align: center; padding: 3rem; color: #888; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤿 Dive Log <span id="owner-badge" class="owner-badge" style="display:none">Owner</span></h1>
+  <div style="display:flex;gap:.6rem;align-items:center">
+    <button id="btn-log" style="display:none" onclick="openLogModal()">+ Log a Dive</button>
+    <button id="btn-signin" onclick="openSignIn()">Sign In</button>
+  </div>
+</header>
+<main>
+  <div class="stats">
+    <div class="stat"><div class="val" id="stat-dives">–</div><div class="lbl">Total Dives</div></div>
+    <div class="stat"><div class="val" id="stat-depth">–</div><div class="lbl">Max Depth (m)</div></div>
+    <div class="stat"><div class="val" id="stat-time">–</div><div class="lbl">Total Minutes</div></div>
+    <div class="stat"><div class="val" id="stat-locs">–</div><div class="lbl">Locations</div></div>
+  </div>
+  <div class="dives" id="dives-list">
+    <div class="empty">Loading dives…</div>
+  </div>
+</main>
+
+<!-- Log a Dive modal -->
+<div class="modal-bg" id="log-modal">
+  <div class="modal">
+    <h2>Log a Dive</h2>
+    <div class="field"><label>Date *</label><input type="date" id="f-date"></div>
+    <div class="field"><label>Location *</label><input type="text" id="f-loc" placeholder="e.g. Blue Corner, Palau"></div>
+    <div class="field"><label>Max Depth (m)</label><input type="number" id="f-depth" step="0.1" min="0"></div>
+    <div class="field"><label>Duration (min)</label><input type="number" id="f-dur" min="1"></div>
+    <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="Conditions, highlights, marine life…"></textarea></div>
+    <div class="field"><label>Photo</label><input type="file" id="f-photo" accept="image/*"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeLogModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitDive()">Save Dive</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sign-in modal -->
+<div class="modal-bg" id="sign-in-modal">
+  <div class="modal">
+    <h2>Owner Sign In</h2>
+    <div class="field"><label>Owner Token</label><input type="password" id="f-token" placeholder="Enter token…"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSignIn()">Cancel</button>
+      <button class="btn-primary" onclick="doSignIn()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '/api/dives';
+  let ownerToken = localStorage.getItem('ownerToken') || null;
+
+  function isOwner() { return !!ownerToken; }
+
+  function applyOwnerUI() {
+    document.getElementById('btn-log').style.display = isOwner() ? 'inline-block' : 'none';
+    document.getElementById('btn-signin').textContent = isOwner() ? 'Sign Out' : 'Sign In';
+    document.getElementById('btn-signin').onclick = isOwner() ? doSignOut : openSignIn;
+    document.getElementById('owner-badge').style.display = isOwner() ? 'inline' : 'none';
+  }
+
+  function openSignIn() { document.getElementById('sign-in-modal').classList.add('open'); }
+  function closeSignIn() { document.getElementById('sign-in-modal').classList.remove('open'); }
+  function doSignIn() {
+    const tok = document.getElementById('f-token').value.trim();
+    if (!tok) return;
+    ownerToken = tok;
+    localStorage.setItem('ownerToken', tok);
+    closeSignIn();
+    applyOwnerUI();
+    loadDives();
+  }
+  function doSignOut() {
+    ownerToken = null;
+    localStorage.removeItem('ownerToken');
+    applyOwnerUI();
+    loadDives();
+  }
+
+  function openLogModal() {
+    document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('log-modal').classList.add('open');
+  }
+  function closeLogModal() { document.getElementById('log-modal').classList.remove('open'); }
+
+  async function submitDive() {
+    const date = document.getElementById('f-date').value;
+    const location = document.getElementById('f-loc').value.trim();
+    if (!date || !location) { alert('Date and location are required'); return; }
+
+    let photo_key = null;
+    const photoFile = document.getElementById('f-photo').files[0];
+    if (photoFile) {
+      const fd = new FormData();
+      fd.append('file', photoFile);
+      const r = await fetch('/api/upload', { method: 'POST', headers: { 'X-Owner-Token': ownerToken }, body: fd });
+      if (r.ok) { const d = await r.json(); photo_key = d.key; }
+    }
+
+    const body = {
+      date, location,
+      depth_m: parseFloat(document.getElementById('f-depth').value) || null,
+      duration_min: parseInt(document.getElementById('f-dur').value) || null,
+      notes: document.getElementById('f-notes').value.trim() || null,
+      photo_key,
+    };
+
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Owner-Token': ownerToken },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) { closeLogModal(); loadDives(); }
+    else { alert('Failed to save dive'); }
+  }
+
+  async function deleteDive(id) {
+    if (!confirm('Delete this dive?')) return;
+    const r = await fetch(`${API}?id=${id}`, { method: 'DELETE', headers: { 'X-Owner-Token': ownerToken } });
+    if (r.ok) loadDives();
+  }
+
+  async function loadDives() {
+    const list = document.getElementById('dives-list');
+    try {
+      const r = await fetch(API);
+      const dives = await r.json();
+
+      // Stats
+      document.getElementById('stat-dives').textContent = dives.length;
+      document.getElementById('stat-depth').textContent = dives.length ? Math.max(...dives.map(d => d.depth_m || 0)).toFixed(1) : '–';
+      document.getElementById('stat-time').textContent = dives.reduce((s, d) => s + (d.duration_min || 0), 0) || '–';
+      document.getElementById('stat-locs').textContent = new Set(dives.map(d => d.location)).size || '–';
+
+      if (!dives.length) { list.innerHTML = '<div class="empty">No dives yet. Log your first dive!</div>'; return; }
+
+      list.innerHTML = dives.map(d => `
+        <div class="dive-card">
+          <div>
+            <h3>${escHtml(d.location)}</h3>
+            <div class="dive-meta">
+              <span>📅 ${d.date}</span>
+              ${d.depth_m ? `<span>📏 ${d.depth_m}m</span>` : ''}
+              ${d.duration_min ? `<span>⏱ ${d.duration_min} min</span>` : ''}
+            </div>
+            ${d.notes ? `<div class="dive-notes">${escHtml(d.notes)}</div>` : ''}
+            ${isOwner() ? `<button class="btn-del" onclick="deleteDive(${d.id})">Delete</button>` : ''}
+          </div>
+          ${d.photo_key ? `<img class="dive-photo" src="/photos/${d.photo_key}" alt="dive photo">` : ''}
+        </div>
+      `).join('');
+    } catch(e) {
+      list.innerHTML = '<div class="empty">Could not load dives.</div>';
+    }
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  applyOwnerUI();
+  loadDives();
+</script>
+</body>
+</html>

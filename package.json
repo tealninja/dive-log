@@ -1,0 +1,9 @@
+{
+  "name": "dive-log",
+  "scripts": {
+    "db:init": "wrangler d1 execute dive-log --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3"
+  }
+}
