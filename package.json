@@ -1,7 +1,8 @@
 {
   "name": "dive-log",
   "scripts": {
-    "db:init": "wrangler d1 execute dive-log --remote --file=schema.sql"
+    "db:init": "wrangler d1 execute dive-log --remote --file=schema.sql",
+    "db:migrate": "wrangler d1 execute dive-log --remote --file=migrations/001_diver_profile_expand.sql"
   },
   "devDependencies": {
     "wrangler": "^4"

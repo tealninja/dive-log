@@ -402,6 +402,26 @@
     .dive-card > .mini-map { width: 100%; max-width: none; height: 140px; }
   }
 
+  /* ---- Gear list (diver form) ---- */
+  .gear-list { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .gear-row {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 9px 12px; background: rgba(4,20,31,0.4);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  .gear-row label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.88rem; color: var(--ink); min-width: 140px; cursor: pointer;
+    margin: 0; letter-spacing: 0; text-transform: none;
+  }
+  .gear-row input[type="checkbox"] { accent-color: var(--teal); width: 16px; height: 16px; cursor: pointer; }
+  .gear-row input[type="text"] {
+    background: rgba(4,20,31,0.6); border: 1px solid var(--line-strong);
+    border-radius: 6px; padding: 6px 10px; color: var(--ink);
+    font-family: 'Archivo'; font-size: 0.82rem; flex: 1; min-width: 110px;
+  }
+  .gear-row input[type="text"]:focus { outline: none; border-color: var(--teal); }
+
   /* ---- Report Card ---- */
   .report-card {
     background: linear-gradient(160deg, #f4f1e8, #e8dcc4);
@@ -483,9 +503,13 @@
       <label>Logging as</label>
       <div class="diver-pills" id="diverPills"></div>
     </div>
-    <div class="auth-row" style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+    <div class="auth-row" style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">
       <span id="authStatus" style="font-size:0.74rem;color:var(--ink-dim);letter-spacing:0.08em;text-transform:uppercase;"></span>
       <button class="btn ghost sm" id="authBtn">Sign In</button>
+      <div class="view-toggle" id="unitsToggle" style="margin-left:auto;">
+        <button class="vt-btn" data-units="imperial">ft / °F / lbs</button>
+        <button class="vt-btn" data-units="metric">m / °C / kg</button>
+      </div>
     </div>
   </header>
 
@@ -575,7 +599,7 @@
   <div class="modal">
     <button class="close-x" data-close>×</button>
     <h2 id="formTitle">Log a Dive</h2>
-    <p class="sub">Depths in feet · temps in °F · pressure in PSI · weight in lbs</p>
+    <p class="sub" id="formSub"></p>
     <div class="form-grid" id="formGrid"></div>
   </div>
 </div>
@@ -619,6 +643,46 @@ const CONDITIONS = ['Calm','Mild chop','Choppy','Surge','Strong current','Mild c
 let DIVERS = [];
 let DIVES = [];
 let ME = null;
+let UNITS = localStorage.getItem('divelog:units') || 'imperial';
+
+// ---- Unit conversions. Storage stays imperial; helpers render in current unit. ----
+const isMetric = () => UNITS === 'metric';
+const ftToM     = (ft)  => ft == null || ft === '' ? null : +ft * 0.3048;
+const mToFt     = (m)   => m  == null || m  === '' ? null : +m  / 0.3048;
+const lbsToKg   = (lb)  => lb == null || lb === '' ? null : +lb * 0.453592;
+const kgToLbs   = (kg)  => kg == null || kg === '' ? null : +kg / 0.453592;
+const inToCm    = (i)   => i  == null || i  === '' ? null : +i  * 2.54;
+const cmToIn    = (c)   => c  == null || c  === '' ? null : +c  / 2.54;
+const fToC      = (f)   => f  == null || f  === '' ? null : (+f - 32) * 5/9;
+const cToF      = (c)   => c  == null || c  === '' ? null : +c * 9/5 + 32;
+const cuftToL   = (cf)  => cf == null || cf === '' ? null : +cf * 28.3168;
+const round1    = (v)   => v == null ? null : Math.round(+v * 10) / 10;
+const round0    = (v)   => v == null ? null : Math.round(+v);
+
+const U = {
+  // formatted display for stored imperial value, returns string with unit suffix
+  depth:  (ft)  => ft  == null || ft  === '' ? '—' : isMetric() ? `${round1(ftToM(ft))} m`   : `${round0(ft)} ft`,
+  temp:   (f)   => f   == null || f   === '' ? '—' : isMetric() ? `${round0(fToC(f))}°C`     : `${round0(f)}°F`,
+  weight: (lb)  => lb  == null || lb  === '' ? '—' : isMetric() ? `${round1(lbsToKg(lb))} kg` : `${round0(lb)} lbs`,
+  height: (i)   => i   == null || i   === '' ? '—' : isMetric() ? `${round0(inToCm(i))} cm`  : `${Math.floor(i/12)}′${Math.round(i%12)}″`,
+  rmv:    (cf)  => cf  == null || cf  === '' ? '—' : isMetric() ? `${round1(cuftToL(cf))} L/min` : `${round1(cf)} cu ft/min`,
+  // unit suffix only
+  depthU:  () => isMetric() ? 'm'  : 'ft',
+  tempU:   () => isMetric() ? '°C' : '°F',
+  weightU: () => isMetric() ? 'kg' : 'lbs',
+  heightU: () => isMetric() ? 'cm' : 'in',
+  rmvLabel:() => isMetric() ? 'RMV L/min' : 'RMV cu ft/min',
+  // convert displayed value (current unit) back to stored imperial for save
+  inDepth:  v => v === '' || v == null ? '' : isMetric() ? mToFt(v) : +v,
+  inTemp:   v => v === '' || v == null ? '' : isMetric() ? cToF(v)  : +v,
+  inWeight: v => v === '' || v == null ? '' : isMetric() ? kgToLbs(v): +v,
+  inHeight: v => v === '' || v == null ? '' : isMetric() ? cmToIn(v) : +v,
+  // populate displayed value (current unit) from stored imperial
+  outDepth:  v => v === '' || v == null ? '' : isMetric() ? round1(ftToM(v))  : +v,
+  outTemp:   v => v === '' || v == null ? '' : isMetric() ? round1(fToC(v))   : +v,
+  outWeight: v => v === '' || v == null ? '' : isMetric() ? round1(lbsToKg(v)) : +v,
+  outHeight: v => v === '' || v == null ? '' : isMetric() ? round0(inToCm(v)) : +v,
+};
 let editingId = null;
 let formPhotos = [];
 let formSiteTags = [];
@@ -901,6 +965,7 @@ function currencyLabel(days){
 window.openReportCard = function(diverId){
   const d = diverById(diverId);
   const r = computeReportCard(diverId);
+  rcLastId = diverId;
   const av = d.avatar_key
     ? `<div class="rc-avatar" style="background-image:url('/photos/${d.avatar_key}');"></div>`
     : `<div class="rc-avatar" style="background:${d.color||'#1ba3a8'};">${diverInitial(d)}</div>`;
@@ -920,6 +985,21 @@ window.openReportCard = function(diverId){
   const regionChips = r.regions.length
     ? r.regions.map(c => `<span class="rc-chip muted">${c.t} <span style="opacity:.6">·${c.n}</span></span>`).join('')
     : '<span class="rc-empty">No locations logged</span>';
+
+  const g = d.gear || {};
+  const gearItems = [
+    g.mask && 'Mask',
+    g.snorkel && 'Snorkel',
+    g.fins && `Fins${g.fins_size?` (${g.fins_size})`:''}`,
+    g.booties && `Booties${g.booties_size?` (${g.booties_size})`:''}`,
+    g.wetsuit && `Wetsuit${g.wetsuit_thickness?` ${g.wetsuit_thickness}`:''}${g.wetsuit_size?` (${g.wetsuit_size})`:''}`,
+    g.bcd && `BCD${g.bcd_size?` (${g.bcd_size})`:''}`,
+    g.regulator && 'Regulator',
+    g.computer && 'Dive computer',
+  ].filter(Boolean);
+  const gearChips = gearItems.length
+    ? gearItems.map(t => `<span class="rc-chip">${t}</span>`).join('')
+    : '<span class="rc-empty">Renting everything</span>';
 
   const lastDiveText = r.lastDiveDate
     ? `${fmtDate(r.lastDiveDate)} — ${currencyLabel(r.daysSinceLast)}${r.lastDiveSite?` · ${r.lastDiveSite}`:''}`
@@ -941,13 +1021,37 @@ window.openReportCard = function(diverId){
       </div>
 
       <div class="rc-section">
+        <h3>Body</h3>
+        <div class="rc-grid">
+          <div class="rc-stat"><div class="v">${U.height(d.height_in)}</div><div class="k">Height</div></div>
+          <div class="rc-stat"><div class="v">${U.weight(d.body_weight_lbs)}</div><div class="k">Weight</div></div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Medical &amp; Emergency</h3>
+        <div class="rc-grid">
+          <div class="rc-stat"><div class="v" style="font-size:0.95rem;">${d.allergies || '—'}</div><div class="k">Allergies</div></div>
+          <div class="rc-stat"><div class="v" style="font-size:0.95rem;">${d.medications || '—'}</div><div class="k">Medications</div></div>
+          <div class="rc-stat" style="grid-column:span 2;"><div class="v" style="font-size:0.95rem;white-space:pre-wrap;">${d.health_conditions || '—'}</div><div class="k">Health conditions</div></div>
+          <div class="rc-stat"><div class="v" style="font-size:0.95rem;">${d.emergency_name || '—'}</div><div class="k">Emergency contact</div></div>
+          <div class="rc-stat"><div class="v" style="font-size:0.95rem;">${d.emergency_phone || '—'}</div><div class="k">Contact phone</div></div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Gear Owned</h3>
+        <div class="rc-chips">${gearChips}</div>
+      </div>
+
+      <div class="rc-section">
         <h3>Experience</h3>
         <div class="rc-grid">
           <div class="rc-stat"><div class="v">${r.totalDives}</div><div class="k">Total dives</div></div>
           <div class="rc-stat"><div class="v">${r.divesLastYear}</div><div class="k">Last 12 months</div></div>
           <div class="rc-stat"><div class="v">${Math.floor(r.totalMins/60)}h ${r.totalMins%60}m</div><div class="k">Bottom time</div></div>
-          <div class="rc-stat"><div class="v">${r.maxDepth || '—'}${r.maxDepth?' ft':''}</div><div class="k">Deepest dive</div></div>
-          <div class="rc-stat"><div class="v">${r.typicalDepth ? r.typicalDepth+' ft' : '—'}</div><div class="k">Typical depth (12mo)</div></div>
+          <div class="rc-stat"><div class="v">${U.depth(r.maxDepth)}</div><div class="k">Deepest dive</div></div>
+          <div class="rc-stat"><div class="v">${U.depth(r.typicalDepth)}</div><div class="k">Typical depth (12mo)</div></div>
           <div class="rc-stat"><div class="v" style="font-size:0.95rem;">${lastDiveText}</div><div class="k">Most recent</div></div>
         </div>
       </div>
@@ -955,11 +1059,11 @@ window.openReportCard = function(diverId){
       <div class="rc-section">
         <h3>Typical Profile</h3>
         <div class="rc-grid">
-          <div class="rc-stat"><div class="v">${r.avgRmv ? r.avgRmv : '—'}</div><div class="k">Avg RMV (cu ft/min)</div></div>
+          <div class="rc-stat"><div class="v">${r.avgRmv ? U.rmv(r.avgRmv) : '—'}</div><div class="k">Avg gas consumption</div></div>
           <div class="rc-stat"><div class="v">${r.typicalGas || '—'}</div><div class="k">Usual gas</div></div>
           <div class="rc-stat"><div class="v">${r.typicalTank || '—'}</div><div class="k">Usual tank</div></div>
           <div class="rc-stat"><div class="v">${r.typicalSuit || '—'}</div><div class="k">Exposure suit</div></div>
-          <div class="rc-stat"><div class="v">${r.typicalWeight ? r.typicalWeight+' lbs' : '—'}</div><div class="k">Avg weight</div></div>
+          <div class="rc-stat"><div class="v">${r.typicalWeight ? U.weight(r.typicalWeight) : '—'}</div><div class="k">Avg dive weight</div></div>
         </div>
       </div>
 
@@ -997,25 +1101,48 @@ window.copyReportCard = function(diverId){
   const r = computeReportCard(diverId);
   const cert = [d.cert_agency, d.cert_level].filter(Boolean).join(' ') || 'None on file';
   const specs = (d.specialties||[]).join(', ') || 'None';
+  const g = d.gear || {};
+  const gearItems = [
+    g.mask && 'Mask',
+    g.snorkel && 'Snorkel',
+    g.fins && `Fins${g.fins_size?` (${g.fins_size})`:''}`,
+    g.booties && `Booties${g.booties_size?` (${g.booties_size})`:''}`,
+    g.wetsuit && `Wetsuit${g.wetsuit_thickness?` ${g.wetsuit_thickness}`:''}${g.wetsuit_size?` (${g.wetsuit_size})`:''}`,
+    g.bcd && `BCD${g.bcd_size?` (${g.bcd_size})`:''}`,
+    g.regulator && 'Regulator',
+    g.computer && 'Dive computer',
+  ].filter(Boolean);
   const lines = [
     `DIVER REPORT — ${d.name}`,
     `Certification: ${cert}${d.cert_number?` (#${d.cert_number})`:''}${d.cert_issue_date?`, issued ${d.cert_issue_date}`:''}`,
     `Specialties: ${specs}`,
     ``,
+    `BODY`,
+    `  Height: ${U.height(d.height_in)}`,
+    `  Weight: ${U.weight(d.body_weight_lbs)}`,
+    ``,
+    `MEDICAL & EMERGENCY`,
+    `  Allergies: ${d.allergies || '—'}`,
+    `  Medications: ${d.medications || '—'}`,
+    `  Health conditions: ${d.health_conditions || '—'}`,
+    `  Emergency contact: ${d.emergency_name || '—'}${d.emergency_phone?` (${d.emergency_phone})`:''}`,
+    ``,
+    `GEAR OWNED: ${gearItems.join(', ') || 'Renting everything'}`,
+    ``,
     `EXPERIENCE`,
     `  Total dives: ${r.totalDives}`,
     `  Dives in last 12 months: ${r.divesLastYear}`,
     `  Bottom time: ${Math.floor(r.totalMins/60)}h ${r.totalMins%60}m`,
-    `  Deepest: ${r.maxDepth || '—'} ft`,
-    `  Typical depth (last 12mo): ${r.typicalDepth ? r.typicalDepth+' ft' : '—'}`,
+    `  Deepest: ${U.depth(r.maxDepth)}`,
+    `  Typical depth (last 12mo): ${U.depth(r.typicalDepth)}`,
     `  Most recent: ${r.lastDiveDate || '—'}${r.lastDiveSite?` at ${r.lastDiveSite}`:''} (${currencyLabel(r.daysSinceLast)})`,
     ``,
     `TYPICAL PROFILE`,
-    `  Avg RMV: ${r.avgRmv ? r.avgRmv+' cu ft/min' : '—'}`,
+    `  Avg gas consumption: ${r.avgRmv ? U.rmv(r.avgRmv) : '—'}`,
     `  Usual gas: ${r.typicalGas || '—'}`,
     `  Usual tank: ${r.typicalTank || '—'}`,
     `  Exposure suit: ${r.typicalSuit || '—'}`,
-    `  Avg weight: ${r.typicalWeight ? r.typicalWeight+' lbs' : '—'}`,
+    `  Avg dive weight: ${r.typicalWeight ? U.weight(r.typicalWeight) : '—'}`,
     ``,
     `COMFORTABLE CONDITIONS: ${r.conditions.map(c => c.t).join(', ') || '—'}`,
     `SITE TYPES: ${r.siteTypes.map(c => c.t).join(', ') || '—'}`,
@@ -1050,7 +1177,7 @@ function renderDivers(){
             <div class="mini-stats">
               <div><div class="v">${s.dives}</div><div class="k">Dives</div></div>
               <div><div class="v">${Math.floor(s.mins/60)}h ${s.mins%60}m</div><div class="k">Bottom</div></div>
-              <div><div class="v">${s.maxDepth||'—'} ft</div><div class="k">Deepest</div></div>
+              <div><div class="v">${U.depth(s.maxDepth)}</div><div class="k">Deepest</div></div>
               <div><div class="v">${s.sites}</div><div class="k">Sites</div></div>
             </div>
             <button class="btn ghost sm" style="margin-top:12px;" onclick="event.stopPropagation(); openReportCard('${d.id}')">📋 Report Card</button>
@@ -1063,6 +1190,7 @@ function renderDivers(){
 let diverEditId = null;
 let diverFormSpecialties = [];
 let diverFormAvatar = null; // data URL or R2 key
+let rcLastId = null;        // last-opened report card diver id (for unit toggle re-render)
 
 window.openDiverEdit = function(id){
   const d = diverById(id);
@@ -1108,11 +1236,49 @@ function buildDiverForm(d){
     <div class="fieldset-title">Specialties</div>
     <div class="field full"><div class="tagpick" id="dv_specPick"></div></div>
 
+    <div class="fieldset-title">Body</div>
+    <div class="field"><label>Height (${U.heightU()})</label><input id="dv_height" type="number" step="any" value="${U.outHeight(d.height_in)}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Weight (${U.weightU()})</label><input id="dv_body_weight" type="number" step="any" value="${U.outWeight(d.body_weight_lbs)}" ${ro?'disabled':''}></div>
+
+    <div class="fieldset-title">Medical &amp; Emergency</div>
+    <div class="field full"><label>Allergies</label><input id="dv_allergies" value="${(d.allergies||'').replace(/"/g,'&quot;')}" placeholder="e.g. shellfish, latex, penicillin — or 'none'" ${ro?'disabled':''}></div>
+    <div class="field full"><label>Current Medications</label><input id="dv_medications" value="${(d.medications||'').replace(/"/g,'&quot;')}" placeholder="e.g. albuterol, antihistamines — or 'none'" ${ro?'disabled':''}></div>
+    <div class="field full"><label>Health Conditions</label><textarea id="dv_health" placeholder="Asthma, diabetes, ear surgery, pregnancy, heart, etc. — or 'none'" ${ro?'disabled':''}>${d.health_conditions||''}</textarea></div>
+    <div class="field"><label>Emergency Contact Name</label><input id="dv_em_name" value="${(d.emergency_name||'').replace(/"/g,'&quot;')}" ${ro?'disabled':''}></div>
+    <div class="field"><label>Emergency Contact Phone</label><input id="dv_em_phone" value="${(d.emergency_phone||'').replace(/"/g,'&quot;')}" placeholder="+1 555 123 4567" ${ro?'disabled':''}></div>
+
+    <div class="fieldset-title">Gear Owned</div>
+    <div class="field full">
+      <div class="gear-list">
+        <div class="gear-row"><label><input type="checkbox" id="g_mask" ${(d.gear&&d.gear.mask)?'checked':''} ${ro?'disabled':''}> Mask</label></div>
+        <div class="gear-row"><label><input type="checkbox" id="g_snorkel" ${(d.gear&&d.gear.snorkel)?'checked':''} ${ro?'disabled':''}> Snorkel</label></div>
+        <div class="gear-row">
+          <label><input type="checkbox" id="g_fins" ${(d.gear&&d.gear.fins)?'checked':''} ${ro?'disabled':''}> Fins</label>
+          <input type="text" id="g_fins_size" placeholder="Size (e.g. 9, M)" value="${(d.gear&&d.gear.fins_size||'').replace(/"/g,'&quot;')}" ${ro?'disabled':''}>
+        </div>
+        <div class="gear-row">
+          <label><input type="checkbox" id="g_booties" ${(d.gear&&d.gear.booties)?'checked':''} ${ro?'disabled':''}> Booties</label>
+          <input type="text" id="g_booties_size" placeholder="Size" value="${(d.gear&&d.gear.booties_size||'').replace(/"/g,'&quot;')}" ${ro?'disabled':''}>
+        </div>
+        <div class="gear-row">
+          <label><input type="checkbox" id="g_wetsuit" ${(d.gear&&d.gear.wetsuit)?'checked':''} ${ro?'disabled':''}> Wetsuit</label>
+          <input type="text" id="g_wetsuit_thickness" placeholder="Thickness (e.g. 3mm)" value="${(d.gear&&d.gear.wetsuit_thickness||'').replace(/"/g,'&quot;')}" ${ro?'disabled':''}>
+          <input type="text" id="g_wetsuit_size" placeholder="Size (e.g. M)" value="${(d.gear&&d.gear.wetsuit_size||'').replace(/"/g,'&quot;')}" ${ro?'disabled':''}>
+        </div>
+        <div class="gear-row">
+          <label><input type="checkbox" id="g_bcd" ${(d.gear&&d.gear.bcd)?'checked':''} ${ro?'disabled':''}> BCD</label>
+          <input type="text" id="g_bcd_size" placeholder="Size" value="${(d.gear&&d.gear.bcd_size||'').replace(/"/g,'&quot;')}" ${ro?'disabled':''}>
+        </div>
+        <div class="gear-row"><label><input type="checkbox" id="g_regulator" ${(d.gear&&d.gear.regulator)?'checked':''} ${ro?'disabled':''}> Regulator</label></div>
+        <div class="gear-row"><label><input type="checkbox" id="g_computer" ${(d.gear&&d.gear.computer)?'checked':''} ${ro?'disabled':''}> Dive computer</label></div>
+      </div>
+    </div>
+
     <div class="fieldset-title">Dive Stats</div>
     <div class="computed-box">
       <div class="cb"><div class="v">${s.dives}</div><div class="k">Total dives</div></div>
       <div class="cb"><div class="v">${Math.floor(s.mins/60)}h ${s.mins%60}m</div><div class="k">Bottom time</div></div>
-      <div class="cb"><div class="v">${s.maxDepth||'—'} ft</div><div class="k">Deepest</div></div>
+      <div class="cb"><div class="v">${U.depth(s.maxDepth)}</div><div class="k">Deepest</div></div>
       <div class="cb"><div class="v">${s.sites}</div><div class="k">Unique sites</div></div>
       <div class="cb"><div class="v">${s.ownDives}</div><div class="k">Logged by them</div></div>
     </div>
@@ -1154,6 +1320,23 @@ function refreshAvatarPreview(){
 async function saveDiverProfile(){
   if (!isOwner()) { toast('Sign in to edit'); return; }
   const id = diverEditId;
+  const gear = {
+    mask:     $('#g_mask').checked,
+    snorkel:  $('#g_snorkel').checked,
+    fins:     $('#g_fins').checked,
+    fins_size: $('#g_fins_size').value.trim(),
+    booties:  $('#g_booties').checked,
+    booties_size: $('#g_booties_size').value.trim(),
+    wetsuit:  $('#g_wetsuit').checked,
+    wetsuit_thickness: $('#g_wetsuit_thickness').value.trim(),
+    wetsuit_size: $('#g_wetsuit_size').value.trim(),
+    bcd:      $('#g_bcd').checked,
+    bcd_size: $('#g_bcd_size').value.trim(),
+    regulator: $('#g_regulator').checked,
+    computer:  $('#g_computer').checked,
+  };
+  const heightVal = $('#dv_height').value;
+  const bodyWeightVal = $('#dv_body_weight').value;
   const payload = {
     id,
     name: $('#dv_name').value.trim(),
@@ -1164,6 +1347,14 @@ async function saveDiverProfile(){
     cert_number: $('#dv_cert_number').value,
     cert_issue_date: $('#dv_cert_issue').value,
     specialties: [...diverFormSpecialties],
+    height_in:       heightVal === '' ? null : U.inHeight(heightVal),
+    body_weight_lbs: bodyWeightVal === '' ? null : U.inWeight(bodyWeightVal),
+    allergies:         $('#dv_allergies').value.trim(),
+    medications:       $('#dv_medications').value.trim(),
+    health_conditions: $('#dv_health').value.trim(),
+    emergency_name:    $('#dv_em_name').value.trim(),
+    emergency_phone:   $('#dv_em_phone').value.trim(),
+    gear,
   };
   if (!payload.name) { toast('Name is required'); return; }
   // upload avatar if it's a new data URL
@@ -1210,10 +1401,11 @@ function renderStats(){
   const totalMins = mine.reduce((s,d)=> s+(minsBetween(d.timeIn,d.timeOut)||0),0);
   const maxD = mine.reduce((m,d)=> Math.max(m,+d.maxDepth||0),0);
   const sites = new Set(mine.map(d=>d.site)).size;
+  const deepestDisp = maxD ? (isMetric() ? round1(ftToM(maxD)) : maxD) : 0;
   const stats=[
     {num:mine.length,lbl:'Total Dives'},
     {num:Math.floor(totalMins/60),u:'h '+(totalMins%60)+'m',lbl:'Bottom Time'},
-    {num:maxD,u:'ft',lbl:'Deepest'},
+    {num:deepestDisp,u:U.depthU(),lbl:'Deepest'},
     {num:sites,lbl:'Unique Sites'},
   ];
   $('#stats').innerHTML = stats.map(s=>`<div class="stat"><div class="num">${s.num}${s.u?`<span class="u">${s.u}</span>`:''}</div><div class="lbl">${s.lbl}</div></div>`).join('');
@@ -1254,11 +1446,11 @@ async function renderTimeline(){
         <h3>${d.site||'Untitled Site'}</h3>
         <div class="meta"><span>📍 <b>${d.location||'—'}</b></span><span>📅 ${fmtDate(d.date)}</span><span>🕐 ${d.timeIn||'—'}–${d.timeOut||'—'}</span></div>
         <div class="card-stats">
-          <div class="card-stat"><div class="v">${d.maxDepth||'—'} ft</div><div class="k">Max Depth</div></div>
+          <div class="card-stat"><div class="v">${U.depth(d.maxDepth)}</div><div class="k">Max Depth</div></div>
           <div class="card-stat"><div class="v">${bt!=null?bt+' min':'—'}</div><div class="k">Bottom Time</div></div>
           <div class="card-stat"><div class="v">${d.startPsi||'—'}→${d.endPsi||'—'}</div><div class="k">PSI</div></div>
-          ${sac&&sac.rmv?`<div class="card-stat"><div class="v">${sac.rmv}</div><div class="k">RMV cu ft/min</div></div>`:''}
-          ${d.waterTemp?`<div class="card-stat"><div class="v">${d.waterTemp}°</div><div class="k">Water</div></div>`:''}
+          ${sac&&sac.rmv?`<div class="card-stat"><div class="v">${U.rmv(sac.rmv)}</div><div class="k">Gas use</div></div>`:''}
+          ${d.waterTemp?`<div class="card-stat"><div class="v">${U.temp(d.waterTemp)}</div><div class="k">Water</div></div>`:''}
         </div>
         <div class="tags">
           ${(d.siteTags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}
@@ -1280,34 +1472,37 @@ async function renderTimeline(){
   initMiniMaps(list);
 }
 
-const TABLE_COLS = [
-  { key:'diveNum', label:'#',           get:d => computedDiveNum(d) || 0, fmt:v => v||'—', cls:'num' },
-  { key:'date',    label:'Date',        get:d => (d.date||'')+'T'+(d.timeIn||''), fmt:(_,d) => fmtDate(d.date) },
-  { key:'site',    label:'Site',        get:d => (d.site||'').toLowerCase(), fmt:(_,d) => d.site || '<span class="dim">—</span>' },
-  { key:'location',label:'Location',    get:d => (d.location||'').toLowerCase(), fmt:(_,d) => d.location || '<span class="dim">—</span>' },
-  { key:'diver',   label:'Diver',       get:d => diverById(d.diver).name.toLowerCase(), fmt:(_,d) => diverById(d.diver).name },
-  { key:'maxDepth',label:'Max ft',      get:d => +d.maxDepth || 0, fmt:v => v ? `<span class="num">${v}</span>` : '<span class="dim">—</span>', cls:'num' },
-  { key:'bt',      label:'Bottom',      get:d => minsBetween(d.timeIn,d.timeOut)||0, fmt:v => v ? `<span class="num">${v}m</span>` : '<span class="dim">—</span>', cls:'num' },
-  { key:'temp',    label:'Water °F',    get:d => +d.waterTemp || 0, fmt:v => v ? `<span class="num">${v}°</span>` : '<span class="dim">—</span>', cls:'num' },
-  { key:'critters',label:'Sightings',   get:d => (d.critters||[]).length, fmt:(v,d) => (d.critters||[]).slice(0,3).join(', ') + ((d.critters||[]).length>3?`+${(d.critters||[]).length-3}`:'') || '<span class="dim">—</span>' },
-];
+function getTableCols(){
+  return [
+    { key:'diveNum', label:'#',                 get:d => computedDiveNum(d) || 0, fmt:v => v||'—', cls:'num' },
+    { key:'date',    label:'Date',              get:d => (d.date||'')+'T'+(d.timeIn||''), fmt:(_,d) => fmtDate(d.date) },
+    { key:'site',    label:'Site',              get:d => (d.site||'').toLowerCase(), fmt:(_,d) => d.site || '<span class="dim">—</span>' },
+    { key:'location',label:'Location',          get:d => (d.location||'').toLowerCase(), fmt:(_,d) => d.location || '<span class="dim">—</span>' },
+    { key:'diver',   label:'Diver',             get:d => diverById(d.diver).name.toLowerCase(), fmt:(_,d) => diverById(d.diver).name },
+    { key:'maxDepth',label:`Max ${U.depthU()}`, get:d => +d.maxDepth || 0, fmt:(_,d) => d.maxDepth ? `<span class="num">${U.depth(d.maxDepth)}</span>` : '<span class="dim">—</span>', cls:'num' },
+    { key:'bt',      label:'Bottom',            get:d => minsBetween(d.timeIn,d.timeOut)||0, fmt:v => v ? `<span class="num">${v}m</span>` : '<span class="dim">—</span>', cls:'num' },
+    { key:'temp',    label:`Water ${U.tempU()}`,get:d => +d.waterTemp || 0, fmt:(_,d) => d.waterTemp ? `<span class="num">${U.temp(d.waterTemp)}</span>` : '<span class="dim">—</span>', cls:'num' },
+    { key:'critters',label:'Sightings',         get:d => (d.critters||[]).length, fmt:(v,d) => (d.critters||[]).slice(0,3).join(', ') + ((d.critters||[]).length>3?`+${(d.critters||[]).length-3}`:'') || '<span class="dim">—</span>' },
+  ];
+}
 
 function renderTimelineTable(){
   const wrap = $('#timelineTable');
+  const cols = getTableCols();
   const data = getFiltered().slice().sort((a,b) => {
-    const col = TABLE_COLS.find(c => c.key === tableSort.col) || TABLE_COLS[1];
+    const col = cols.find(c => c.key === tableSort.col) || cols[1];
     const va = col.get(a), vb = col.get(b);
     let cmp = (va < vb) ? -1 : (va > vb) ? 1 : 0;
     return tableSort.dir === 'asc' ? cmp : -cmp;
   });
   if (!data.length) { wrap.innerHTML = `<div class="empty"><div class="fish">🪸</div><p>No dives match these filters.</p></div>`; return; }
-  const head = TABLE_COLS.map(c => {
+  const head = cols.map(c => {
     const sorted = c.key === tableSort.col;
     const arrow = sorted ? (tableSort.dir === 'asc' ? '▲' : '▼') : '↕';
     return `<th class="${sorted?'sorted':''}" onclick="sortTimelineTable('${c.key}')">${c.label}<span class="arr">${arrow}</span></th>`;
   }).join('');
   const rows = data.map(d => {
-    const cells = TABLE_COLS.map(c => `<td class="${c.cls||''}">${c.fmt(c.get(d), d)}</td>`).join('');
+    const cells = cols.map(c => `<td class="${c.cls||''}">${c.fmt(c.get(d), d)}</td>`).join('');
     return `<tr onclick="openDetail(${JSON.stringify(d.id)})">${cells}</tr>`;
   }).join('');
   wrap.innerHTML = `<table class="dive-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -1358,6 +1553,7 @@ function initMiniMaps(root){
 function buildForm(d={}){
   formPhotos=[]; formSiteTags=d.siteTags?[...d.siteTags]:[]; formCritters=d.critters?[...d.critters]:[];
   formBuddies=d.buddies?[...d.buddies]:[]; formConds=d.conditions?[...d.conditions]:[];
+  const sub = $('#formSub'); if (sub) sub.textContent = `Depths in ${U.depthU()} · temps in ${U.tempU()} · pressure in PSI · weight in ${U.weightU()}`;
   const g=$('#formGrid');
   const buddyOpts=DIVERS.filter(x=>x.id!==(d.diver||ME));
   g.innerHTML=`
@@ -1374,10 +1570,10 @@ function buildForm(d={}){
     <div class="field"><label>Time Out</label><input id="f_timeOut" type="time" value="${d.timeOut||''}"></div>
 
     <div class="fieldset-title">Depth & Water</div>
-    <div class="field"><label>Deepest Point (ft)</label><input id="f_maxDepth" type="number" value="${d.maxDepth||''}"></div>
-    <div class="field"><label>Average Depth (ft)</label><input id="f_avgDepth" type="number" value="${d.avgDepth||''}"></div>
-    <div class="field"><label>Water Temp (°F)</label><input id="f_waterTemp" type="number" value="${d.waterTemp||''}"></div>
-    <div class="field"><label>Visibility (ft)</label><input id="f_viz" type="number" value="${d.viz||''}"></div>
+    <div class="field"><label>Deepest Point (${U.depthU()})</label><input id="f_maxDepth" type="number" step="any" value="${U.outDepth(d.maxDepth)}"></div>
+    <div class="field"><label>Average Depth (${U.depthU()})</label><input id="f_avgDepth" type="number" step="any" value="${U.outDepth(d.avgDepth)}"></div>
+    <div class="field"><label>Water Temp (${U.tempU()})</label><input id="f_waterTemp" type="number" step="any" value="${U.outTemp(d.waterTemp)}"></div>
+    <div class="field"><label>Visibility (${U.depthU()})</label><input id="f_viz" type="number" step="any" value="${U.outDepth(d.viz)}"></div>
 
     <div class="fieldset-title">Gas & Gear</div>
     <div class="field"><label>Start PSI</label><input id="f_startPsi" type="number" value="${d.startPsi||''}" oninput="liveCalc()"></div>
@@ -1385,7 +1581,7 @@ function buildForm(d={}){
     <div class="field"><label>Tank Size (cu ft)</label><input id="f_tankSize" type="number" value="${d.tankSize||'80'}" oninput="liveCalc()"></div>
     <div class="field"><label>Tank Rated PSI</label><input id="f_tankPressure" type="number" value="${d.tankPressure||'3000'}" oninput="liveCalc()"></div>
     <div class="field"><label>Gas Mix</label><select id="f_gas"><option ${d.gas==='Air'?'selected':''}>Air</option><option ${d.gas==='Nitrox 32'?'selected':''}>Nitrox 32</option><option ${d.gas==='Nitrox 36'?'selected':''}>Nitrox 36</option><option ${d.gas==='Custom'?'selected':''}>Custom</option></select></div>
-    <div class="field"><label>Weight (lbs)</label><input id="f_weight" type="number" value="${d.weight||''}"></div>
+    <div class="field"><label>Weight (${U.weightU()})</label><input id="f_weight" type="number" step="any" value="${U.outWeight(d.weight)}"></div>
     <div class="field"><label>Exposure Suit</label><input id="f_suit" value="${d.suit||''}" placeholder="3mm wetsuit, drysuit…"></div>
     <div class="field"><label>Tank Material</label><select id="f_tankMat"><option ${d.tankMat==='Aluminum'?'selected':''}>Aluminum</option><option ${d.tankMat==='Steel'?'selected':''}>Steel</option></select></div>
 
@@ -1477,13 +1673,19 @@ window.addCustomCritter=function(){
 
 window.liveCalc=function(){
   const box=$('#computedBox'); if(!box)return;
-  const tmp={ startPsi:$('#f_startPsi').value, endPsi:$('#f_endPsi').value, timeIn:$('#f_timeIn').value, timeOut:$('#f_timeOut').value, maxDepth:$('#f_maxDepth').value, avgDepth:$('#f_avgDepth').value, tankSize:$('#f_tankSize').value, tankPressure:$('#f_tankPressure').value };
+  const tmp={
+    startPsi:$('#f_startPsi').value, endPsi:$('#f_endPsi').value,
+    timeIn:$('#f_timeIn').value, timeOut:$('#f_timeOut').value,
+    maxDepth:U.inDepth($('#f_maxDepth').value),
+    avgDepth:U.inDepth($('#f_avgDepth').value),
+    tankSize:$('#f_tankSize').value, tankPressure:$('#f_tankPressure').value,
+  };
   const sac=computeSAC(tmp);
   if(!sac){ box.innerHTML='<div class="cb"><div class="v">—</div><div class="k">SAC / RMV will compute from PSI, time & depth</div></div>'; return; }
   box.innerHTML=`
     <div class="cb"><div class="v">${sac.runtime} min</div><div class="k">Runtime</div></div>
     <div class="cb"><div class="v">${sac.sac}</div><div class="k">SAC psi/min (surface)</div></div>
-    ${sac.rmv?`<div class="cb"><div class="v">${sac.rmv}</div><div class="k">RMV cu ft/min</div></div>`:''}`;
+    ${sac.rmv?`<div class="cb"><div class="v">${U.rmv(sac.rmv)}</div><div class="k">Gas consumption</div></div>`:''}`;
 };
 
 async function handlePhotos(e){
@@ -1531,9 +1733,12 @@ async function saveDive(){
     site:$('#f_site').value, location:$('#f_location').value,
     lat:$('#f_lat').value, lng:$('#f_lng').value,
     date:$('#f_date').value, surfaceInt:$('#f_si').value, timeIn:$('#f_timeIn').value, timeOut:$('#f_timeOut').value,
-    maxDepth:$('#f_maxDepth').value, avgDepth:$('#f_avgDepth').value, waterTemp:$('#f_waterTemp').value, viz:$('#f_viz').value,
+    maxDepth:U.inDepth($('#f_maxDepth').value),
+    avgDepth:U.inDepth($('#f_avgDepth').value),
+    waterTemp:U.inTemp($('#f_waterTemp').value),
+    viz:U.inDepth($('#f_viz').value),
     startPsi:$('#f_startPsi').value, endPsi:$('#f_endPsi').value, tankSize:$('#f_tankSize').value, tankPressure:$('#f_tankPressure').value,
-    gas:$('#f_gas').value, weight:$('#f_weight').value, suit:$('#f_suit').value, tankMat:$('#f_tankMat').value,
+    gas:$('#f_gas').value, weight:U.inWeight($('#f_weight').value), suit:$('#f_suit').value, tankMat:$('#f_tankMat').value,
     conditions:[...formConds], siteTags:[...formSiteTags], critters:[...formCritters], buddies:[...formBuddies],
     notes:$('#f_notes').value,
   };
@@ -1600,15 +1805,15 @@ async function openDetail(id){
     <p class="sub">📍 ${d.location||'—'} · ${fmtDate(d.date)} · ${d.timeIn||'—'}–${d.timeOut||'—'}</p>
     <div id="detailHero" class="detail-hero"></div>
     <div class="detail-grid">
-      <div class="dg"><div class="v">${d.maxDepth||'—'} ft</div><div class="k">Max Depth</div></div>
-      <div class="dg"><div class="v">${d.avgDepth||'—'} ft</div><div class="k">Avg Depth</div></div>
+      <div class="dg"><div class="v">${U.depth(d.maxDepth)}</div><div class="k">Max Depth</div></div>
+      <div class="dg"><div class="v">${U.depth(d.avgDepth)}</div><div class="k">Avg Depth</div></div>
       <div class="dg"><div class="v">${bt!=null?bt+' min':'—'}</div><div class="k">Bottom Time</div></div>
-      <div class="dg"><div class="v">${d.waterTemp||'—'}°F</div><div class="k">Water Temp</div></div>
-      <div class="dg"><div class="v">${d.viz||'—'} ft</div><div class="k">Visibility</div></div>
+      <div class="dg"><div class="v">${U.temp(d.waterTemp)}</div><div class="k">Water Temp</div></div>
+      <div class="dg"><div class="v">${U.depth(d.viz)}</div><div class="k">Visibility</div></div>
       <div class="dg"><div class="v">${d.startPsi||'—'}→${d.endPsi||'—'}</div><div class="k">PSI Start→End</div></div>
       <div class="dg"><div class="v">${d.gas||'Air'}</div><div class="k">Gas · ${d.tankSize||'?'}cf ${d.tankMat||''}</div></div>
-      <div class="dg"><div class="v">${d.weight||'—'} lbs</div><div class="k">Weight · ${d.suit||'—'}</div></div>
-      ${sac?`<div class="dg"><div class="v">${sac.rmv||sac.sac}</div><div class="k">${sac.rmv?'RMV cu ft/min':'SAC psi/min'}</div></div>`:''}
+      <div class="dg"><div class="v">${U.weight(d.weight)}</div><div class="k">Weight · ${d.suit||'—'}</div></div>
+      ${sac?`<div class="dg"><div class="v">${sac.rmv?U.rmv(sac.rmv):sac.sac}</div><div class="k">${sac.rmv?'Gas use':'SAC psi/min'}</div></div>`:''}
       ${d.surfaceInt?`<div class="dg"><div class="v">${d.surfaceInt}</div><div class="k">Surface Interval</div></div>`:''}
     </div>
     ${d.notes?`<div class="detail-notes">${d.notes.replace(/</g,'&lt;')}</div>`:''}
@@ -1677,7 +1882,7 @@ function drawMap(){
     marker.bindPopup(`
       <h4>${d.site || 'Dive site'}</h4>
       <div class="pmeta"><span>Location</span><b>${d.location || '—'}</b></div>
-      <div class="pmeta"><span>Max depth</span><b>${d.maxDepth ? d.maxDepth+' ft' : '—'}</b></div>
+      <div class="pmeta"><span>Max depth</span><b>${U.depth(d.maxDepth)}</b></div>
       <div class="pmeta"><span>Date</span><b>${fmtDate(d.date)}</b></div>
       <div class="pmeta"><span>Diver</span><b>${diver.name}</b></div>
       <span class="popen" onclick="openDetail(${JSON.stringify(d.id)})">Open dive log →</span>
@@ -1760,6 +1965,27 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
 document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{ if(e.target===m)closeModals(); });
 window.addEventListener('resize',()=>{ if(lmap && $('#tab-map').style.display!=='none') lmap.invalidateSize(); });
 
+// ============ UNITS WIRING ============
+function applyUnitsUI(){
+  document.querySelectorAll('#unitsToggle .vt-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.units === UNITS);
+    b.onclick = () => {
+      if (UNITS === b.dataset.units) return;
+      UNITS = b.dataset.units;
+      localStorage.setItem('divelog:units', UNITS);
+      applyUnitsUI();
+      refreshAll();
+      // re-render any open modals
+      if ($('#diverModal').classList.contains('open') && diverEditId) buildDiverForm(diverById(diverEditId));
+      if ($('#reportCardModal').classList.contains('open') && rcLastId) openReportCard(rcLastId);
+      if ($('#formModal').classList.contains('open')) {
+        // unsaved edits to a new dive are lost on unit switch
+        buildForm(editingId ? DIVES.find(x => x.id === editingId) || {} : {});
+      }
+    };
+  });
+}
+
 // ============ AUTH WIRING ============
 function applyOwnerUI(){
   const owner = isOwner();
@@ -1794,6 +2020,7 @@ $('#f_token').addEventListener('keydown', e => {
 (async function(){
   $('#timelineList').innerHTML='<div class="loading">Surfacing your dive log…</div>';
   applyOwnerUI();
+  applyUnitsUI();
   await loadAll();
   applyOwnerUI();
   renderDiverPills(); refreshAll();

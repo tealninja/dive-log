@@ -114,8 +114,12 @@ async function handleDives(request, env) {
 const DIVER_COLS = [
   'name','color','birthday','cert_agency','cert_level',
   'cert_number','cert_issue_date','specialties','avatar_key',
+  'height_in','body_weight_lbs',
+  'allergies','medications','health_conditions',
+  'emergency_name','emergency_phone',
+  'gear',
 ];
-const DIVER_JSON_COLS = new Set(['specialties']);
+const DIVER_JSON_COLS = new Set(['specialties','gear']);
 
 function diverRowToObj(r) {
   const out = { ...r };
@@ -131,7 +135,8 @@ function diverToRow(body) {
     let v = body[c];
     if (v === undefined) { row[c] = null; continue; }
     if (DIVER_JSON_COLS.has(c)) {
-      row[c] = Array.isArray(v) ? JSON.stringify(v) : (v ? String(v) : null);
+      if (Array.isArray(v) || (v && typeof v === 'object')) row[c] = JSON.stringify(v);
+      else row[c] = v ? String(v) : null;
     } else if (v === '') {
       row[c] = null;
     } else {

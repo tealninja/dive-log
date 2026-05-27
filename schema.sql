@@ -5,17 +5,25 @@ DROP TABLE IF EXISTS dives;
 DROP TABLE IF EXISTS divers;
 
 CREATE TABLE divers (
-  id               TEXT PRIMARY KEY,            -- client-generated, stable across devices
-  name             TEXT NOT NULL,
-  color            TEXT,
-  birthday         TEXT,
-  cert_agency      TEXT,                        -- PADI, SDI, NAUI, SSI, etc.
-  cert_level       TEXT,                        -- Open Water, AOW, Rescue, etc.
-  cert_number      TEXT,
-  cert_issue_date  TEXT,
-  specialties      TEXT,                        -- JSON array
-  avatar_key       TEXT,                        -- R2 key for profile photo
-  created_at       TEXT DEFAULT (datetime('now'))
+  id                TEXT PRIMARY KEY,            -- client-generated, stable across devices
+  name              TEXT NOT NULL,
+  color             TEXT,
+  birthday          TEXT,
+  cert_agency       TEXT,                        -- PADI, SDI, NAUI, SSI, etc.
+  cert_level        TEXT,                        -- Open Water, AOW, Rescue, etc.
+  cert_number       TEXT,
+  cert_issue_date   TEXT,
+  specialties       TEXT,                        -- JSON array
+  avatar_key        TEXT,                        -- R2 key for profile photo
+  height_in         REAL,                        -- body height in inches
+  body_weight_lbs   REAL,                        -- body weight in lbs
+  allergies         TEXT,
+  medications       TEXT,
+  health_conditions TEXT,
+  emergency_name    TEXT,
+  emergency_phone   TEXT,
+  gear              TEXT,                        -- JSON object: { mask, snorkel, fins, fins_size, booties, booties_size, wetsuit, wetsuit_thickness, wetsuit_size, bcd, bcd_size, regulator, computer }
+  created_at        TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE dives (
