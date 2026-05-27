@@ -401,6 +401,74 @@
     .dive-card { flex-direction: column; }
     .dive-card > .mini-map { width: 100%; max-width: none; height: 140px; }
   }
+
+  /* ---- Report Card ---- */
+  .report-card {
+    background: linear-gradient(160deg, #f4f1e8, #e8dcc4);
+    color: #1a2a35; border-radius: 14px; padding: 28px 30px;
+    font-family: 'Archivo', sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+  .report-card .rc-head {
+    display: flex; gap: 18px; align-items: center;
+    border-bottom: 1.5px solid rgba(10,48,70,0.15); padding-bottom: 18px; margin-bottom: 20px;
+  }
+  .report-card .rc-avatar {
+    width: 84px; height: 84px; border-radius: 50%; flex-shrink: 0;
+    background-size: cover; background-position: center;
+    border: 3px solid #1ba3a8;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-size: 2rem; color: #f4f1e8;
+  }
+  .report-card .rc-id h2 {
+    font-family: 'Fraunces', serif; color: #04141f; font-weight: 500;
+    font-size: 1.8rem; letter-spacing: -0.01em; margin-bottom: 4px;
+  }
+  .report-card .rc-cert { font-size: 0.92rem; color: #2a4a5a; }
+  .report-card .rc-cert b { color: #04141f; font-weight: 600; }
+  .report-card .rc-section { margin-top: 18px; }
+  .report-card .rc-section h3 {
+    font-family: 'Fraunces', serif; color: #0a3046; font-weight: 500;
+    font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase;
+    margin-bottom: 10px; border-bottom: 1px solid rgba(10,48,70,0.12); padding-bottom: 4px;
+  }
+  .report-card .rc-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+  }
+  .report-card .rc-stat {
+    background: rgba(255,255,255,0.55); border-radius: 8px; padding: 10px 12px;
+    border: 1px solid rgba(10,48,70,0.08);
+  }
+  .report-card .rc-stat .v {
+    font-family: 'Fraunces', serif; font-size: 1.25rem; color: #04141f; line-height: 1.1;
+  }
+  .report-card .rc-stat .k {
+    font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #4a6a7a; margin-top: 4px;
+  }
+  .report-card .rc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .report-card .rc-chip {
+    font-size: 0.78rem; padding: 4px 11px; border-radius: 100px;
+    background: rgba(27,163,168,0.15); color: #0a3046;
+    border: 1px solid rgba(27,163,168,0.3);
+  }
+  .report-card .rc-chip.muted { background: rgba(10,48,70,0.06); color: #4a6a7a; border-color: rgba(10,48,70,0.12); }
+  .report-card .rc-empty { color: #6a8a9a; font-style: italic; font-size: 0.85rem; }
+  .report-card .rc-foot {
+    margin-top: 22px; padding-top: 14px; border-top: 1px solid rgba(10,48,70,0.12);
+    font-size: 0.72rem; color: #4a6a7a; letter-spacing: 0.04em;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+
+  @media print {
+    body::before, header, nav, .stats, .section-head, .filter-bar,
+    #tab-timeline, #tab-map, #tab-creatures, #tab-divers, .toast { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .modal-bg { position: static !important; background: #fff !important; padding: 0 !important; backdrop-filter: none !important; display: block !important; overflow: visible !important; }
+    .modal-bg:not(#reportCardModal) { display: none !important; }
+    .modal { background: #fff !important; border: none !important; box-shadow: none !important; padding: 0 !important; max-width: none !important; }
+    .close-x, .rc-actions { display: none !important; }
+    .report-card { box-shadow: none; border-radius: 0; }
+  }
 </style>
 </head>
 <body>
@@ -517,6 +585,14 @@
   <div class="modal">
     <button class="close-x" data-close>×</button>
     <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- MODAL: diver report card -->
+<div class="modal-bg" id="reportCardModal">
+  <div class="modal" style="background:transparent;border:none;box-shadow:none;padding:0;">
+    <button class="close-x" data-close style="top:8px;right:8px;color:#fff;z-index:10;">×</button>
+    <div id="reportCardContent"></div>
   </div>
 </div>
 
@@ -749,6 +825,209 @@ function diverStats(diverId){
   return { dives: all.length, ownDives: own.length, mins, maxDepth: maxD, sites };
 }
 
+// ============ REPORT CARD ============
+// What a new dive operator typically wants to see at a glance.
+function computeReportCard(diverId){
+  const own = DIVES.filter(d => d.diver === diverId);
+  const buddied = DIVES.filter(d => (d.buddies||[]).includes(diverId));
+  const all = own.concat(buddied.filter(d => !own.includes(d)));
+
+  // Sort all by date desc for "recent" calculations
+  const allByDate = all.slice().sort((a,b) =>
+    (b.date||'').localeCompare(a.date||'') || (b.timeIn||'').localeCompare(a.timeIn||''));
+
+  const now = new Date();
+  const oneYearAgo = new Date(now.getTime() - 365*24*3600*1000);
+  const inLastYear = all.filter(d => d.date && new Date(d.date) >= oneYearAgo);
+
+  const lastDive = allByDate[0] || null;
+  const daysSinceLast = lastDive && lastDive.date
+    ? Math.floor((now - new Date(lastDive.date)) / (1000*3600*24)) : null;
+
+  const totalMins = all.reduce((s,d) => s+(minsBetween(d.timeIn,d.timeOut)||0), 0);
+  const maxDepth = all.reduce((m,d) => Math.max(m, +d.maxDepth||0), 0);
+  const recentMaxes = inLastYear.map(d => +d.maxDepth).filter(v => v > 0);
+  const typicalDepth = recentMaxes.length
+    ? Math.round(recentMaxes.reduce((s,v) => s+v, 0) / recentMaxes.length) : null;
+
+  // RMV (gas consumption) — only meaningful from dives this diver logged for themselves
+  const rmvs = own.map(computeSAC).filter(s => s && s.rmv).map(s => +s.rmv);
+  const avgRmv = rmvs.length ? (rmvs.reduce((s,v) => s+v, 0) / rmvs.length).toFixed(2) : null;
+
+  // Frequency counter for typical gear / conditions
+  const mode = (arr) => {
+    const c = {};
+    arr.filter(v => v != null && v !== '').forEach(v => { c[v] = (c[v]||0)+1; });
+    const e = Object.entries(c).sort((a,b) => b[1]-a[1]);
+    return e[0] ? e[0][0] : null;
+  };
+  const tagCounts = (arr) => {
+    const c = {};
+    arr.forEach(tags => (tags||[]).forEach(t => { c[t] = (c[t]||0)+1; }));
+    return Object.entries(c).sort((a,b) => b[1]-a[1]).map(([t,n]) => ({t,n}));
+  };
+
+  const typicalGas = mode(own.map(d => d.gas));
+  const typicalSuit = mode(own.map(d => d.suit));
+  const typicalTank = mode(own.map(d => d.tankSize ? `${d.tankSize}cf ${d.tankMat||''}`.trim() : null));
+  const weights = own.map(d => +d.weight).filter(v => v > 0);
+  const typicalWeight = weights.length
+    ? Math.round(weights.reduce((s,v) => s+v, 0) / weights.length) : null;
+
+  const conditions = tagCounts(all.map(d => d.conditions)).slice(0, 6);
+  const siteTypes = tagCounts(all.map(d => d.siteTags)).slice(0, 6);
+  const regions = tagCounts(all.map(d => d.location ? [d.location] : [])).slice(0, 4);
+
+  return {
+    totalDives: all.length, ownDives: own.length,
+    totalMins, maxDepth, typicalDepth,
+    lastDiveDate: lastDive ? lastDive.date : null,
+    lastDiveSite: lastDive ? lastDive.site : null,
+    daysSinceLast,
+    divesLastYear: inLastYear.length,
+    avgRmv,
+    typicalGas, typicalSuit, typicalTank, typicalWeight,
+    conditions, siteTypes, regions,
+  };
+}
+
+function currencyLabel(days){
+  if (days == null) return '—';
+  if (days < 30) return `${days} day${days===1?'':'s'} ago`;
+  if (days < 365) return `${Math.round(days/30)} months ago`;
+  return `${(days/365).toFixed(1)} years ago`;
+}
+
+window.openReportCard = function(diverId){
+  const d = diverById(diverId);
+  const r = computeReportCard(diverId);
+  const av = d.avatar_key
+    ? `<div class="rc-avatar" style="background-image:url('/photos/${d.avatar_key}');"></div>`
+    : `<div class="rc-avatar" style="background:${d.color||'#1ba3a8'};">${diverInitial(d)}</div>`;
+  const certLine = [d.cert_agency, d.cert_level].filter(Boolean).join(' ') || 'No certification on file';
+  const certNum = d.cert_number ? ` · #${d.cert_number}` : '';
+  const certIssued = d.cert_issue_date ? ` · issued ${fmtDate(d.cert_issue_date)}` : '';
+
+  const specChips = (d.specialties||[]).length
+    ? (d.specialties||[]).map(s => `<span class="rc-chip">${s}</span>`).join('')
+    : '<span class="rc-empty">None recorded</span>';
+  const condChips = r.conditions.length
+    ? r.conditions.map(c => `<span class="rc-chip">${c.t} <span style="opacity:.6">·${c.n}</span></span>`).join('')
+    : '<span class="rc-empty">None tagged yet</span>';
+  const siteChips = r.siteTypes.length
+    ? r.siteTypes.map(c => `<span class="rc-chip">${c.t} <span style="opacity:.6">·${c.n}</span></span>`).join('')
+    : '<span class="rc-empty">None tagged yet</span>';
+  const regionChips = r.regions.length
+    ? r.regions.map(c => `<span class="rc-chip muted">${c.t} <span style="opacity:.6">·${c.n}</span></span>`).join('')
+    : '<span class="rc-empty">No locations logged</span>';
+
+  const lastDiveText = r.lastDiveDate
+    ? `${fmtDate(r.lastDiveDate)} — ${currencyLabel(r.daysSinceLast)}${r.lastDiveSite?` · ${r.lastDiveSite}`:''}`
+    : 'No dives logged';
+
+  $('#reportCardContent').innerHTML = `
+    <div class="report-card" id="rcPrintable">
+      <div class="rc-head">
+        ${av}
+        <div class="rc-id">
+          <h2>${d.name}</h2>
+          <div class="rc-cert"><b>${certLine}</b>${certNum}${certIssued}</div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Specialties</h3>
+        <div class="rc-chips">${specChips}</div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Experience</h3>
+        <div class="rc-grid">
+          <div class="rc-stat"><div class="v">${r.totalDives}</div><div class="k">Total dives</div></div>
+          <div class="rc-stat"><div class="v">${r.divesLastYear}</div><div class="k">Last 12 months</div></div>
+          <div class="rc-stat"><div class="v">${Math.floor(r.totalMins/60)}h ${r.totalMins%60}m</div><div class="k">Bottom time</div></div>
+          <div class="rc-stat"><div class="v">${r.maxDepth || '—'}${r.maxDepth?' ft':''}</div><div class="k">Deepest dive</div></div>
+          <div class="rc-stat"><div class="v">${r.typicalDepth ? r.typicalDepth+' ft' : '—'}</div><div class="k">Typical depth (12mo)</div></div>
+          <div class="rc-stat"><div class="v" style="font-size:0.95rem;">${lastDiveText}</div><div class="k">Most recent</div></div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Typical Profile</h3>
+        <div class="rc-grid">
+          <div class="rc-stat"><div class="v">${r.avgRmv ? r.avgRmv : '—'}</div><div class="k">Avg RMV (cu ft/min)</div></div>
+          <div class="rc-stat"><div class="v">${r.typicalGas || '—'}</div><div class="k">Usual gas</div></div>
+          <div class="rc-stat"><div class="v">${r.typicalTank || '—'}</div><div class="k">Usual tank</div></div>
+          <div class="rc-stat"><div class="v">${r.typicalSuit || '—'}</div><div class="k">Exposure suit</div></div>
+          <div class="rc-stat"><div class="v">${r.typicalWeight ? r.typicalWeight+' lbs' : '—'}</div><div class="k">Avg weight</div></div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Comfortable Conditions</h3>
+        <div class="rc-chips">${condChips}</div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Site Types Logged</h3>
+        <div class="rc-chips">${siteChips}</div>
+      </div>
+
+      <div class="rc-section">
+        <h3>Regions Dived</h3>
+        <div class="rc-chips">${regionChips}</div>
+      </div>
+
+      <div class="rc-foot">
+        <span>Generated from logged dives · ${fmtDate(new Date().toISOString().slice(0,10))}</span>
+        <span>${r.ownDives} of ${r.totalDives} dives self-logged</span>
+      </div>
+    </div>
+    <div class="rc-actions" style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="btn ghost" onclick="copyReportCard('${d.id}')">📋 Copy as text</button>
+      <button class="btn ghost" onclick="window.print()">🖨 Print / Save PDF</button>
+      <button class="btn" data-close>Done</button>
+    </div>`;
+  $('#reportCardModal').classList.add('open');
+  $('#reportCardModal').querySelectorAll('[data-close]').forEach(b => b.onclick = closeModals);
+};
+
+window.copyReportCard = function(diverId){
+  const d = diverById(diverId);
+  const r = computeReportCard(diverId);
+  const cert = [d.cert_agency, d.cert_level].filter(Boolean).join(' ') || 'None on file';
+  const specs = (d.specialties||[]).join(', ') || 'None';
+  const lines = [
+    `DIVER REPORT — ${d.name}`,
+    `Certification: ${cert}${d.cert_number?` (#${d.cert_number})`:''}${d.cert_issue_date?`, issued ${d.cert_issue_date}`:''}`,
+    `Specialties: ${specs}`,
+    ``,
+    `EXPERIENCE`,
+    `  Total dives: ${r.totalDives}`,
+    `  Dives in last 12 months: ${r.divesLastYear}`,
+    `  Bottom time: ${Math.floor(r.totalMins/60)}h ${r.totalMins%60}m`,
+    `  Deepest: ${r.maxDepth || '—'} ft`,
+    `  Typical depth (last 12mo): ${r.typicalDepth ? r.typicalDepth+' ft' : '—'}`,
+    `  Most recent: ${r.lastDiveDate || '—'}${r.lastDiveSite?` at ${r.lastDiveSite}`:''} (${currencyLabel(r.daysSinceLast)})`,
+    ``,
+    `TYPICAL PROFILE`,
+    `  Avg RMV: ${r.avgRmv ? r.avgRmv+' cu ft/min' : '—'}`,
+    `  Usual gas: ${r.typicalGas || '—'}`,
+    `  Usual tank: ${r.typicalTank || '—'}`,
+    `  Exposure suit: ${r.typicalSuit || '—'}`,
+    `  Avg weight: ${r.typicalWeight ? r.typicalWeight+' lbs' : '—'}`,
+    ``,
+    `COMFORTABLE CONDITIONS: ${r.conditions.map(c => c.t).join(', ') || '—'}`,
+    `SITE TYPES: ${r.siteTypes.map(c => c.t).join(', ') || '—'}`,
+    `REGIONS: ${r.regions.map(c => c.t).join(', ') || '—'}`,
+  ];
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(
+    () => toast('Report card copied ✓'),
+    () => toast('Copy failed — select and copy manually')
+  );
+};
+
 function renderDivers(){
   const grid = $('#diversGrid');
   if (!DIVERS.length){
@@ -774,6 +1053,7 @@ function renderDivers(){
               <div><div class="v">${s.maxDepth||'—'} ft</div><div class="k">Deepest</div></div>
               <div><div class="v">${s.sites}</div><div class="k">Sites</div></div>
             </div>
+            <button class="btn ghost sm" style="margin-top:12px;" onclick="event.stopPropagation(); openReportCard('${d.id}')">📋 Report Card</button>
           </div>
         </div>`;
     }).join('') + `</div>`;
@@ -840,6 +1120,7 @@ function buildDiverForm(d){
     <div class="modal-actions" style="grid-column:1/-1;">
       ${ro?'<span></span>':`<button class="btn danger" id="diverDeleteBtn">Delete Diver</button>`}
       <div style="display:flex;gap:10px;">
+        <button class="btn ghost" onclick="openReportCard('${d.id}')">📋 Report Card</button>
         <button class="btn ghost" data-close>Close</button>
         ${ro?'':'<button class="btn" id="diverSaveBtn">Save Profile</button>'}
       </div>
